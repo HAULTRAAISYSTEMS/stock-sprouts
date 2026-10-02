@@ -5,15 +5,20 @@
 <div class="game-shell">
   <img class="game-splash" src="{{ url_for('static', filename='img/v2/bullrun-splash.webp') }}" alt="Bull Run — sprint through Fortune City">
   <h2 class="q-sec-title">Bull <span class="gold">Run</span></h2>
-  <p class="game-tip"><strong>Run the Bull Run. Grab coins. Snag brand tokens. Own the stocks.</strong></p>
-  <p class="game-tip">Swipe (or arrows) to dodge — <strong>← →</strong> switch lanes, <strong>↑</strong> jump the pits &amp; barriers, <strong>↓</strong> slide under the toll gates. Grab <strong>brand tokens</strong> — 3 of one brand earns a real $5 stock slice! <span class="pretend-tag">pretend money</span></p>
+  <p class="game-tip"><strong>Outrun Lou the Liability!</strong> He is chasing you down Bull Street — every hit lets him catch up. Grab coins, snag brand tokens (3 of one brand = a real $5 stock slice, and tokens push Lou back!), and don't let liabilities catch you. <span class="pretend-tag">pretend money</span></p>
+  <p class="game-tip">Swipe (or arrows): <strong>← →</strong> switch lanes, <strong>↑</strong> jump the pits &amp; barriers, <strong>↓</strong> slide under the toll gates. Thread traps for Close-call bonuses — and watch out for MARKET CRASHES!</p>
 
   <div class="game-hud">
-    <span class="stat-pill"><span id="catchTime">45s</span></span>
     <span class="stat-pill gold">{{ icon('star', 'ic') }} Score: <span id="catchScore">0</span></span>
+    <span class="stat-pill">{{ icon('bolt', 'ic') }} <span id="catchDist">0m</span></span>
     <span class="stat-pill">Lv 1</span>
   </div>
+  <div class="liab-wrap" aria-label="Liabilities proximity">
+    <span class="liab-label">LOU THE LIABILITY</span>
+    <div class="liab-bar"><div id="liabFill"></div></div>
+  </div>
   <div class="token-row" id="tokenHud"></div>
+  <div id="crashBanner" class="crash-banner" style="display:none">MARKET CRASH!</div>
 
   <div id="gameArea">
     <canvas id="catchCanvas"></canvas>
@@ -23,18 +28,21 @@
       <button class="run-btn" data-runner="slide" aria-label="Slide">{{ icon('chevD', 'ic lg') }}</button>
       <button class="run-btn" data-runner="right" aria-label="Move right">{{ icon('chevR', 'ic lg') }}</button>
     </div>
-    <p class="game-tip mt" id="catchHint">Get ready… 45 seconds on the clock!</p>
+    <p class="game-tip mt" id="catchHint">Get ready… outrun Lou!</p>
   </div>
 
   <div id="catchResult" style="display:none">
     <div class="q-card gold-edge">
-      <h3>Bull Run complete!</h3>
+      <h3>Lou the Liability caught you!</h3>
+      <p class="game-tip"><strong>Liabilities caught you!</strong> Debt eats your money the same way — unless your assets outrun it.</p>
       <p class="center" id="doubleBanner" style="display:none"><span class="badge-state open">DAILY DOUBLE — 2x coins &amp; cash!</span></p>
       <div class="big-rewards">
         <div class="big-reward"><b id="finalScore">0</b>points</div>
+        <div class="big-reward"><b id="finalDist">0</b>meters survived</div>
         <div class="big-reward"><b id="finalCoins">0</b>Stock Coins earned</div>
         <div class="big-reward"><b id="finalCash">$0</b>cash for stocks</div>
       </div>
+      <p class="game-tip" id="catchRecord"></p>
       <div id="sliceList"></div>
       <p class="game-tip" id="catchBonus"></p>
       <p class="game-tip" id="catchBadge"></p>
@@ -48,6 +56,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
+window.AVATAR_URL = "{{ avatar_url }}";
 function confettiBurst() {
   const c = document.createElement("canvas");
   c.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200";
@@ -79,9 +88,19 @@ function runCatch() {
   document.getElementById("gameArea").style.display = "block";
   document.getElementById("catchResult").style.display = "none";
   document.getElementById("doubleBanner").style.display = "none";
-  document.getElementById("catchHint").textContent = "Go! Swipe, arrows, or the buttons — run!";
-  initCoinCatch("catchCanvas", async ({ score, caught, tokens }) => {
+  document.getElementById("catchHint").textContent = "Go! Swipe, arrows, or the buttons — outrun Lou!";
+  initCoinCatch("catchCanvas", async ({ score, caught, tokens, distance, caught_by }) => {
     document.getElementById("gameArea").style.display = "none";
+    document.getElementById("finalScore").textContent = score;
+    document.getElementById("finalDist").textContent = distance || 0;
+    try {
+      const best = parseInt(localStorage.getItem("bullrun_best") || "0", 10) || 0;
+      document.getElementById("catchRecord").textContent =
+        (distance || 0) > best
+          ? "New record! " + distance + "m — your best Bull Run yet!"
+          : (distance || 0) + "m survived. Your best: " + best + "m.";
+      if ((distance || 0) > best) localStorage.setItem("bullrun_best", String(distance || 0));
+    } catch (e) { /* private mode */ }
     try {
       const res = await api("/api/game/catch", { score, caught, tokens: tokens || {} });
       document.getElementById("finalScore").textContent = score;
