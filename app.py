@@ -1,9 +1,12 @@
-"""Stock Sprouts — a stock-market learning game for kids (web prototype).
+"""Stock Quest — a stock-market learning game for kids (web prototype).
 
-Tracks: Sprouts (ages 6-12) and Traders (ages 13-18).
+Quest-based game: age brackets, avatars, Fortune City hub, quests, Stock Coins,
+XP levels, Money Bank. Market engine (market.py) shared with the classic
+Sprouts/Traders screens, which stay available.
 All money in the game is pretend money. No real trading, no real accounts.
 """
 
+import json
 import os
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -15,7 +18,12 @@ import market
 from market import TICKERS
 import game_data
 from game_data import (SPROUTS_LEVELS, TRADERS_LEVELS, HEADLINES, WEATHER,
-                       DIVIDEND_RATE, DIVIDEND_COOLDOWN_S, STARTING_CASH)
+                       DIVIDEND_RATE, DIVIDEND_COOLDOWN_S, STARTING_CASH,
+                       BRACKETS, BRACKET_IDS, LEVELS, QUESTS, QUIZ_Q1,
+                       SORT_ITEMS, BADGES, AVATAR_PORTRAITS,
+                       AVATAR_ACCESSORIES, AVATAR_FRAMES, AVATAR_A11Y,
+                       MASCOTS)
+from game_data import bracket_for, level_for_xp, quest_for
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-only-stock-sprouts-key")
@@ -60,6 +68,18 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT,
     PRIMARY KEY (profile_id, key)
 );
+CREATE TABLE IF NOT EXISTS quests_done (
+    profile_id INTEGER NOT NULL,
+    quest_id TEXT NOT NULL,
+    done_at TEXT NOT NULL,
+    PRIMARY KEY (profile_id, quest_id)
+);
+CREATE TABLE IF NOT EXISTS badges (
+    profile_id INTEGER NOT NULL,
+    badge_id TEXT NOT NULL,
+    earned_at TEXT NOT NULL,
+    PRIMARY KEY (profile_id, badge_id)
+);
 """
 
 
@@ -90,7 +110,21 @@ def init_db():
     conn.close()
 
 
+def migrate():
+    """Add v2 profile columns to databases created before the quest update."""
+    conn = sqlite3.connect(db_path())
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(profiles)").fetchall()}
+    for col, ddl in (("bracket", "TEXT"), ("avatar", "TEXT"),
+                     ("coins", "REAL NOT NULL DEFAULT 0"),
+                     ("xp", "INTEGER NOT NULL DEFAULT 0")):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE profiles ADD COLUMN {col} {ddl}")
+    conn.commit()
+    conn.close()
+
+
 init_db()
+migrate()
 
 
 # ----------------------------------------------------------------------------
@@ -121,6 +155,92 @@ def bump_meta(pid, key):
     val = int(get_meta(pid, key, "0") or "0") + 1
     set_meta(pid, key, val)
     return val
+
+
+# ----------------------------------------------------------------------------
+# Stock Quest v2 helpers: levels, badges, quest state
+# ----------------------------------------------------------------------------
+def grant_badge(pid, badge_id):
+    """Award a badge; returns True if it is new."""
+    db = get_db()
+    cur = db.execute(
+        "INSERT OR IGNORE INTO badges (profile_id, badge_id, earned_at) VALUES (?, ?, ?)",
+        (pid, badge_id, datetime.now().isoformat()))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def add_unlock(pid, unlock_id):
+    unlocks = set((get_meta(pid, "unlocks") or "").split(",")) - {""}
+    if unlock_id not in unlocks:
+        unlocks.add(unlock_id)
+        set_meta(pid, "unlocks", ",".join(sorted(unlocks)))
+        return True
+    return False
+
+
+def award(pid, coins=0, xp=0):
+    """Add Stock Coins and XP; returns (total_coins, total_xp, level, leveled_up)."""
+    db = get_db()
+    before = db.execute("SELECT coins, xp FROM profiles WHERE id = ?",
+                        (pid,)).fetchone()
+    old_level = level_for_xp(before["xp"] or 0)["n"]
+    db.execute("UPDATE profiles SET coins = coins + ?, xp = xp + ? WHERE id = ?",
+               (coins, xp, pid))
+    db.commit()
+    row = db.execute("SELECT coins, xp FROM profiles WHERE id = ?",
+                     (pid,)).fetchone()
+    new_level = level_for_xp(row["xp"] or 0)
+    return (row["coins"] or 0, row["xp"] or 0, new_level,
+            new_level["n"] > old_level)
+
+
+def quest_state(pid):
+    """Everything the v2 UI needs about a player."""
+    db = get_db()
+    p = db.execute("SELECT * FROM profiles WHERE id = ?", (pid,)).fetchone()
+    done = {r["quest_id"] for r in db.execute(
+        "SELECT quest_id FROM quests_done WHERE profile_id = ?", (pid,))}
+    earned = {r["badge_id"] for r in db.execute(
+        "SELECT badge_id FROM badges WHERE profile_id = ?", (pid,))}
+    unlocks = set((get_meta(pid, "unlocks") or "").split(",")) - {""}
+    avatar = {}
+    try:
+        avatar = json.loads(p["avatar"] or "{}")
+    except (TypeError, ValueError):
+        avatar = {}
+    avatar.setdefault("portrait", "age-9-12")
+    avatar.setdefault("accessory", "none")
+    avatar.setdefault("frame", "gold")
+    if not isinstance(avatar.get("a11y"), list):
+        avatar["a11y"] = []
+    avatar["a11y"] = [a for a in avatar["a11y"] if a in AVATAR_A11Y]
+    coins = p["coins"] or 0
+    xp = p["xp"] or 0
+    level = level_for_xp(xp)
+    nxt = next((L for L in LEVELS if L["xp"] > xp), None)
+    bank_balance = float(get_meta(pid, "bank_balance", "0") or 0)
+    holdings = db.execute(
+        "SELECT COUNT(*) c FROM holdings WHERE profile_id = ?", (pid,)).fetchone()["c"]
+    return {
+        "profile": p, "avatar": avatar, "coins": coins, "xp": xp,
+        "level": level, "next_level": nxt,
+        "done": done, "badges": earned, "unlocks": unlocks,
+        "bank_balance": bank_balance, "holdings": holdings,
+        "bracket": bracket_for(p["bracket"]) if p["bracket"] else None,
+    }
+
+
+def render_v2(template, p, **kw):
+    """Render a v2 page with quest state injected."""
+    return render_template(template, profile=p, v2=quest_state(p["id"]), **kw)
+
+
+def _v2_profile_or_redirect():
+    p = current_profile()
+    if not p:
+        return None, redirect(url_for("start"))
+    return p, None
 
 
 def portfolio(pid):
@@ -205,8 +325,30 @@ def _profile_or_401():
 # ----------------------------------------------------------------------------
 @app.get("/")
 def index():
-    return render_template("index.html", profile=current_profile(),
-                           price_mode=market.mode())
+    p = current_profile()
+    if p:
+        return redirect(url_for("city"))
+    return render_template("opening.html", price_mode=market.mode())
+
+
+@app.get("/parents")
+def parents():
+    return render_template("parents.html", profile=current_profile())
+
+
+@app.get("/signout")
+def signout():
+    session.pop("profile_id", None)
+    return redirect(url_for("index"))
+
+
+@app.route("/start", methods=["GET", "POST"])
+def start():
+    """Choose an age bracket (v2 onboarding). POSTs into /profile with bracket."""
+    if request.method == "POST":
+        return profile()
+    return render_template("age_select.html", brackets=BRACKETS,
+                           profile=current_profile())
 
 
 @app.route("/profile", methods=["GET", "POST"])
@@ -214,6 +356,17 @@ def profile():
     db = get_db()
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()[:24] or "Rookie"
+        bracket_id = request.form.get("bracket") or ""
+        if bracket_id in BRACKET_IDS:
+            b = bracket_for(bracket_id)
+            track = b["track"]
+            cur = db.execute(
+                "INSERT INTO profiles (name, track, bracket, cash, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (name, track, bracket_id, STARTING_CASH, datetime.now().isoformat()))
+            db.commit()
+            session["profile_id"] = cur.lastrowid
+            return redirect(url_for("avatar_creator"))
         track = request.form.get("track") or "sprouts"
         if track not in ("sprouts", "traders"):
             track = "sprouts"
@@ -226,6 +379,145 @@ def profile():
     profiles = db.execute("SELECT * FROM profiles ORDER BY id DESC").fetchall()
     return render_template("profile.html", profiles=profiles,
                            profile=current_profile())
+
+
+@app.get("/avatar")
+def avatar_creator():
+    p = current_profile()
+    if not p:
+        return redirect(url_for("start"))
+    st = quest_state(p["id"])
+    return render_template("avatar.html", profile=p, v2=st,
+                           portraits=AVATAR_PORTRAITS,
+                           accessories=AVATAR_ACCESSORIES,
+                           frames=AVATAR_FRAMES, a11y_opts=AVATAR_A11Y)
+
+
+@app.get("/city")
+def city():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    st = quest_state(p["id"])
+    quests = []
+    for q in QUESTS:
+        quests.append({"q": q, "done": q["id"] in st["done"]})
+    districts = [
+        {"id": "starter", "name": "Starter Town", "art": "starter-town.webp",
+         "href": url_for("quest_intro", qid="q1"),
+         "state": "done" if "q1" in st["done"] else "open",
+         "sub": "Quest 1 · What Is Money?"},
+        {"id": "mart", "name": "Quest Mart", "art": "quest-mart.webp",
+         "href": url_for("quest_intro", qid="q2"),
+         "state": "done" if "q2" in st["done"] else "open",
+         "sub": "Quest 2 · Needs vs. Wants"},
+        {"id": "bank", "name": "Money Bank", "art": "money-bank.webp",
+         "href": url_for("bank"),
+         "state": "open" if "money-bank" in st["unlocks"] else "locked",
+         "sub": "Unlocks after Quest 1"},
+        {"id": "exchange", "name": "Stock Exchange", "art": "city-panorama.webp",
+         "href": url_for("exchange"),
+         "state": "done" if "q3" in st["done"] else "open",
+         "sub": "Quest 3 · Your First Slice"},
+        {"id": "academy", "name": "Skyline Academy", "art": "city-panorama.webp",
+         "href": url_for("levels"),
+         "state": "open", "sub": "Lessons & level progress"},
+        {"id": "lab", "name": "The Lab", "art": "city-panorama.webp",
+         "href": "", "state": "soon", "sub": "Experiments coming soon"},
+    ]
+    return render_template("city.html", profile=p, v2=st,
+                           quests=quests, districts=districts)
+
+
+@app.get("/quest/<qid>")
+def quest_intro(qid):
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    q = quest_for(qid)
+    if not q:
+        return redirect(url_for("city"))
+    st = quest_state(p["id"])
+    step_states = []
+    for s in q["steps"]:
+        done = bool(s.get("done_key") and get_meta(p["id"], s["done_key"]) == "1")
+        if q.get("auto") == "holding" and st["holdings"] > 0:
+            done = True
+        step_states.append({"s": s, "done": done})
+    return render_template("quest_intro.html", profile=p, v2=st, q=q,
+                           steps=step_states, done=qid in st["done"],
+                           mascots=MASCOTS)
+
+
+@app.get("/quest/q1/play")
+def quest_catch():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    return render_v2("quest_catch.html", p)
+
+
+@app.get("/quest/q1/quiz")
+def quest_quiz():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    return render_v2("quest_quiz.html", p, quiz=QUIZ_Q1)
+
+
+@app.get("/quest/q2/play")
+def quest_sort():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    return render_v2("quest_sort.html", p, items=SORT_ITEMS)
+
+
+@app.get("/quest/<qid>/complete")
+def quest_complete_page(qid):
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    q = quest_for(qid)
+    if not q:
+        return redirect(url_for("city"))
+    st = quest_state(p["id"])
+    return render_template("quest_complete.html", profile=p, v2=st, q=q,
+                           done=qid in st["done"])
+
+
+@app.get("/bank")
+def bank():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    st = quest_state(p["id"])
+    if "money-bank" not in st["unlocks"]:
+        return redirect(url_for("quest_intro", qid="q1"))
+    return render_template("bank.html", profile=p, v2=st)
+
+
+@app.get("/me")
+def me():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    st = quest_state(p["id"])
+    badge_list = [{"b": b, "earned": b["id"] in st["badges"]} for b in BADGES]
+    return render_template("me.html", profile=p, v2=st, badges=badge_list,
+                           quests_done=len(st["done"]), quest_total=len(QUESTS))
+
+
+@app.get("/exchange")
+def exchange():
+    p, redir = _v2_profile_or_redirect()
+    if redir:
+        return redir
+    pf = portfolio(p["id"])
+    storm_active = get_meta(p["id"], "storm_active") == "1"
+    return render_v2("exchange.html", p, pf=pf, tickers=TICKERS,
+                     headlines=HEADLINES, storm_active=storm_active,
+                     price_mode=market.mode())
 
 
 @app.get("/play")
@@ -277,20 +569,15 @@ def traders():
     if not p:
         return redirect(url_for("profile"))
     pf = portfolio(p["id"])
-    # latest prediction status
-    db = get_db()
-    pred = db.execute(
-        "SELECT * FROM predictions WHERE profile_id = ? ORDER BY id DESC LIMIT 1",
-        (p["id"],)).fetchone()
-    pred_info = None
-    if pred:
-        pred_info = {"ticker": pred["ticker"], "direction": pred["direction"],
-                     "target_date": pred["target_date"],
-                     "resolved": bool(pred["resolved"]), "correct": pred["correct"]}
     storm_active = get_meta(p["id"], "storm_active") == "1"
+    # Classic route now serves the Stock Exchange district (v2 art direction).
+    if p["bracket"]:
+        return render_v2("exchange.html", p, pf=pf, tickers=TICKERS,
+                         headlines=HEADLINES, storm_active=storm_active,
+                         price_mode=market.mode())
     return render_template("traders.html", profile=p, pf=pf,
                            tickers=TICKERS, headlines=HEADLINES,
-                           pred=pred_info, storm_active=storm_active,
+                           storm_active=storm_active,
                            price_mode=market.mode())
 
 
@@ -553,6 +840,7 @@ def api_storm():
         v_end = round(v_storm * 1.12, 2) if action == "hold" else v_storm
         set_meta(p["id"], "storm_active", "0")
         set_meta(p["id"], "storm_done", "1")
+        grant_badge(p["id"], "storm-survivor")
         return jsonify({"ok": True, "choice": action, "v0": v0,
                         "v_storm": v_storm, "v_end": v_end,
                         "lesson": ("You held on — and the recovery did the work. "
@@ -561,6 +849,201 @@ def api_storm():
                         ("Panic selling locked in the loss. The storm passed, "
                          "but your money didn't get to enjoy the sunshine.")})
     return jsonify({"ok": False, "error": "Unknown storm action."}), 400
+
+
+# ----------------------------------------------------------------------------
+# Stock Quest v2 JSON APIs
+# ----------------------------------------------------------------------------
+@app.post("/api/avatar/save")
+def api_avatar_save():
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    portrait = data.get("portrait") or "age-9-12"
+    accessory = data.get("accessory") or "none"
+    frame = data.get("frame") or "gold"
+    if portrait not in AVATAR_PORTRAITS:
+        portrait = "age-9-12"
+    if accessory not in AVATAR_ACCESSORIES:
+        accessory = "none"
+    if frame not in AVATAR_FRAMES:
+        frame = "gold"
+    raw_a11y = data.get("a11y") or []
+    if not isinstance(raw_a11y, list):
+        raw_a11y = []
+    a11y = [a for a in raw_a11y if a in AVATAR_A11Y]
+    avatar = {"portrait": portrait, "accessory": accessory, "frame": frame,
+              "a11y": a11y}
+    get_db().execute("UPDATE profiles SET avatar = ? WHERE id = ?",
+                     (json.dumps(avatar), p["id"]))
+    get_db().commit()
+    return jsonify({"ok": True, "avatar": avatar})
+
+
+@app.post("/api/coins/add")
+def api_coins_add():
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        amount = int(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "That number did not make sense."}), 400
+    if amount <= 0 or amount > 10000:
+        return jsonify({"ok": False, "error": "Pick 1–10000 coins."}), 400
+    coins, xp, level, leveled = award(p["id"], coins=amount)
+    return jsonify({"ok": True, "added": amount, "coins": coins,
+                    "level": level["n"], "level_name": level["name"],
+                    "leveled_up": leveled})
+
+
+@app.post("/api/game/catch")
+def api_game_catch():
+    """Coin Catch results: score -> Stock Coins, step flag, maybe a badge."""
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        score = max(0, int(data.get("score", 0)))
+        caught = max(0, int(data.get("caught", 0)))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "That score did not make sense."}), 400
+    coins_earned = min(score // 10, 100)
+    coins, xp, level, leveled = award(p["id"], coins=coins_earned)
+    set_meta(p["id"], "q1_caught", "1")
+    set_meta(p["id"], "q1_best", str(max(score, int(get_meta(p["id"], "q1_best", "0") or 0))))
+    badge = grant_badge(p["id"], "coin-catcher") if caught >= 20 else False
+    return jsonify({"ok": True, "score": score, "caught": caught,
+                    "coins_earned": coins_earned, "coins": coins,
+                    "badge": "coin-catcher" if badge else None})
+
+
+@app.post("/api/game/sort")
+def api_game_sort():
+    """Quest 2 sorting results."""
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        correct = max(0, int(data.get("correct", 0)))
+        total = max(1, int(data.get("total", len(SORT_ITEMS))))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "That score did not make sense."}), 400
+    correct = min(correct, total)
+    passed = correct >= 5
+    coins_earned = min(correct * 5, 50)
+    coins, xp, level, leveled = award(p["id"], coins=coins_earned)
+    if passed:
+        set_meta(p["id"], "q2_sorted", "1")
+    return jsonify({"ok": True, "correct": correct, "total": total,
+                    "passed": passed, "coins_earned": coins_earned,
+                    "coins": coins})
+
+
+@app.post("/api/game/quiz")
+def api_game_quiz():
+    """Grade the Quest 1 quiz."""
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    answers = data.get("answers") or []
+    results, correct = [], 0
+    for i, item in enumerate(QUIZ_Q1):
+        try:
+            picked = int(answers[i]) if i < len(answers) else -1
+        except (TypeError, ValueError):
+            picked = -1
+        ok = picked == item["answer"]
+        correct += 1 if ok else 0
+        results.append({"correct": ok, "picked": picked,
+                        "answer": item["answer"], "explain": item["explain"]})
+    passed = correct >= 2
+    if passed:
+        set_meta(p["id"], "q1_quiz_passed", "1")
+    return jsonify({"ok": True, "correct": correct, "total": len(QUIZ_Q1),
+                    "passed": passed, "results": results})
+
+
+def _quest_steps_done(pid, q):
+    """Check whether a quest's required steps are complete."""
+    if q.get("auto") == "holding":
+        n = get_db().execute(
+            "SELECT COUNT(*) c FROM holdings WHERE profile_id = ?", (pid,)).fetchone()["c"]
+        return n > 0
+    for s in q["steps"]:
+        key = s.get("done_key")
+        if key and get_meta(pid, key) != "1":
+            return False
+    return True
+
+
+@app.post("/api/quest/complete")
+def api_quest_complete():
+    p, err = _profile_or_401()
+    if err:
+        return err
+    data = request.get_json(force=True, silent=True) or {}
+    q = quest_for((data.get("quest_id") or "").strip())
+    if not q:
+        return jsonify({"ok": False, "error": "Unknown quest."}), 404
+    db = get_db()
+    already = db.execute(
+        "SELECT 1 FROM quests_done WHERE profile_id = ? AND quest_id = ?",
+        (p["id"], q["id"])).fetchone()
+    if already:
+        st = quest_state(p["id"])
+        return jsonify({"ok": True, "already": True, "coins": st["coins"],
+                        "xp": st["xp"], "level": st["level"]})
+    if not _quest_steps_done(p["id"], q):
+        return jsonify({"ok": False,
+                        "error": "Finish the quest steps first!"}), 400
+    coins, xp, level, leveled = award(p["id"], coins=q["coins"], xp=q["xp"])
+    new_unlocks = [u for u in q.get("unlocks", []) if add_unlock(p["id"], u)]
+    badge_new = grant_badge(p["id"], q["badge"]) if q.get("badge") else False
+    db.execute("INSERT INTO quests_done (profile_id, quest_id, done_at) VALUES (?, ?, ?)",
+               (p["id"], q["id"], datetime.now().isoformat()))
+    db.commit()
+    st = quest_state(p["id"])
+    return jsonify({"ok": True, "coins_earned": q["coins"], "xp_earned": q["xp"],
+                    "coins": coins, "xp": xp,
+                    "level": {"n": level["n"], "name": level["name"]},
+                    "leveled_up": leveled, "unlocks": new_unlocks,
+                    "badge": q.get("badge") if badge_new else None,
+                    "next_level": st["next_level"]})
+
+
+@app.post("/api/bank/deposit")
+def api_bank_deposit():
+    p, err = _profile_or_401()
+    if err:
+        return err
+    st = quest_state(p["id"])
+    if "money-bank" not in st["unlocks"]:
+        return jsonify({"ok": False, "error": "Finish Quest 1 to unlock the Money Bank."}), 403
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        amount = int(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "That number did not make sense."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Deposit at least 1 coin."}), 400
+    if amount > st["coins"]:
+        return jsonify({"ok": False, "error": "You don't have that many coins."}), 400
+    db = get_db()
+    db.execute("UPDATE profiles SET coins = coins - ? WHERE id = ?", (amount, p["id"]))
+    db.commit()
+    balance = float(get_meta(p["id"], "bank_balance", "0") or 0) + amount
+    set_meta(p["id"], "bank_balance", str(balance))
+    grant_badge(p["id"], "saver")
+    coins = db.execute("SELECT coins FROM profiles WHERE id = ?",
+                       (p["id"],)).fetchone()["coins"]
+    return jsonify({"ok": True, "deposited": amount,
+                    "bank_balance": balance, "coins": coins})
 
 
 if __name__ == "__main__":
