@@ -534,6 +534,90 @@ function initCoinCatch(canvasId, onDone) {
     }
     if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, yBase - hgt, W, hgt); }
   }
+  // ---- Bull Street landmarks: the Exchange + live ticker tape ----
+  // The signature setting: a grand columned exchange facade (no real logos),
+  // recurring in the near parallax layer, with a scrolling ticker ribbon.
+  const TAPE_SYMS = ["AAPL", "MCD", "NVDA", "RBLX", "NKE", "DIS", "TSLA", "AMZN"];
+  const TAPE_BASE = [1.8, 0.9, 2.6, -0.7, 1.2, 0.4, -1.1, 2.2];
+  function drawTickerTape(x, y, w, t) {
+    const h = 26;
+    ctx.save();
+    ctx.fillStyle = "#0a0f22";
+    ctx.fillRect(x, y, w, h);
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.font = "800 15px 'Baloo 2', sans-serif";
+    ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    const segs = TAPE_SYMS.map((s, i) => {
+      const v = TAPE_BASE[i] + 0.6 * Math.sin(t * 0.0007 + i * 2.3);
+      const txt = s + " " + (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+      return { txt, up: v >= 0, w: ctx.measureText(txt + "   •   ").width };
+    });
+    const total = segs.reduce((a, s) => a + s.w, 0) || 1;
+    const off = (t * 0.045) % total;
+    let px = x - off;
+    while (px < x + w) {
+      for (const sg of segs) {
+        if (px + sg.w > x && px < x + w) {
+          ctx.fillStyle = sg.up ? "#4ade80" : "#f87171";
+          ctx.fillText(sg.txt + "   •   ", px, y + h / 2 + 1);
+        }
+        px += sg.w;
+      }
+    }
+    ctx.restore();
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+  }
+  function drawExchange(bx, baseY, t) {
+    const w = 340;
+    const x0 = bx - w / 2;
+    ctx.save();
+    // steps
+    ctx.fillStyle = "#1a2340";
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(x0 - 14 + i * 7, baseY - 12 - i * 12, w + 28 - i * 14, 12);
+    }
+    const fy = baseY - 48;   // facade base
+    // facade
+    ctx.fillStyle = "#232f52";
+    ctx.fillRect(x0, fy - 150, w, 150);
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 3;
+    ctx.strokeRect(x0, fy - 150, w, 150);
+    // columns with capitals, bases, fluting
+    const n = 6, cw = w / (n + 0.5);
+    for (let i = 0; i < n; i++) {
+      const cxp = x0 + cw * (i + 0.75);
+      ctx.fillStyle = "#31406b";
+      roundRectP(cxp - 13, fy - 142, 26, 142, 6); ctx.fill();
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillRect(cxp - 17, fy - 150, 34, 8);
+      ctx.fillRect(cxp - 17, fy - 16, 34, 8);
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(cxp - 6, fy - 142, 4, 142);
+      ctx.fillRect(cxp + 2, fy - 142, 4, 142);
+    }
+    // pediment
+    ctx.fillStyle = "#2b3a63";
+    ctx.beginPath();
+    ctx.moveTo(x0 - 10, fy - 150);
+    ctx.lineTo(x0 + w / 2, fy - 205);
+    ctx.lineTo(x0 + w + 10, fy - 150);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = "#ffd76a";
+    ctx.font = "800 17px 'Baloo 2', sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("BULL STREET EXCHANGE", x0 + w / 2, fy - 172);
+    // ticker-tape ribbon mounted across the facade
+    drawTickerTape(x0 + 12, fy - 118, w - 24, t);
+    // warm door glow
+    const dg = ctx.createLinearGradient(0, fy - 60, 0, fy);
+    dg.addColorStop(0, "rgba(255,200,60,0)");
+    dg.addColorStop(1, "rgba(255,200,60,0.35)");
+    ctx.fillStyle = dg;
+    ctx.fillRect(x0 + w / 2 - 30, fy - 60, 60, 60);
+    ctx.restore();
+  }
   function drawBG(t) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#070d24"); g.addColorStop(0.3, "#0d1b3e"); g.addColorStop(1, "#16294d");
@@ -550,6 +634,10 @@ function initCoinCatch(canvasId, onDone) {
       // Bull Street panorama: far (slow, darkened) + near (faster)
       drawPanLayer(0.15, horizonY, horizonY, "rgba(7,13,36,0.45)");
       drawPanLayer(0.35, horizonY + 30, horizonY * 1.12, null);
+      // the Exchange: signature landmark recurring in the near layer
+      const xsp = 1400;
+      let exx = -((dist * 56) % xsp);
+      for (; exx < W + 420; exx += xsp) drawExchange(exx, horizonY + 30, t);
     } else {
       drawBuildings(0.25, "#0a1430", 90);
       drawBuildings(0.5, "#0e1c40", 60);
