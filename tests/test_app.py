@@ -259,6 +259,18 @@ def test_coin_catch_submit_awards_coins_and_badge(client):
     assert b"bullrun-splash.webp" in res.data
 
 
+def test_quest_catch_exposes_avatar_url(client):
+    _make_profile(client, name="AvatarKid", track="sprouts")
+    res = client.get("/quest/q1/play")
+    assert res.status_code == 200
+    # default portrait is age-9-12; the page must expose it to the runner
+    assert b'window.AVATAR_URL = "/static/img/v2/age-9-12.webp"' in res.data
+    # chase-mode HUD: distance + liabilities bar, no countdown
+    assert b'id="catchDist"' in res.data
+    assert b'id="liabFill"' in res.data
+    assert b'id="catchTime"' not in res.data
+
+
 def test_quest1_completion_awards_and_unlocks_bank(client):
     _make_v2_profile(client, name="Q1Kid", bracket="junior")
 
