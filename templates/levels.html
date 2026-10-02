@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Level Roadmap{% endblock %}
+{% block content %}
+
+<h2 class="section-title">Your roadmap, {{ profile['name'] }}</h2>
+<p class="section-sub">Every level is a mission. Finish them all and you will know more about money than most adults.</p>
+
+<div class="card" style="margin-bottom:18px">
+  <img class="art" src="{{ url_for('static', filename='img/family.webp') }}" alt="Family playing the stock game together" style="max-height:280px; object-fit:cover; width:100%;">
+  <p class="section-sub" style="margin-top:10px"><strong>Family mode is coming:</strong> weekly household leaderboards, sibling head-to-heads, and a parent dashboard with dinner-table money prompts.</p>
+</div>
+
+<h2 class="section-title">Sprouts · ages 6–12</h2>
+<div class="grid" style="gap:14px; margin-bottom:30px">
+{% for lv in sprouts %}
+  <div class="card level-row {{ 'done' if lv.done }}">
+    <div class="level-num">{{ lv.info.n }}</div>
+    <div style="flex:1">
+      <span class="sticker {{ 'teal' if lv.done }}">{{ lv.info.tag }}</span>
+      <h3 style="margin:2px 0">{{ lv.info.name }} {% if lv.done %}<span class="sticker teal" style="margin:0">Done</span>{% endif %}</h3>
+      <p class="section-sub" style="margin:2px 0">{{ lv.info.lesson }}</p>
+      <div class="progress-track"><div class="progress-fill" style="width:{{ lv.pct|round }}%"></div></div>
+      <p style="margin:6px 0 0; font-weight:700">{{ lv.detail }}</p>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<h2 class="section-title">Traders · ages 13–18</h2>
+<div class="grid" style="gap:14px">
+{% for lv in traders_lv %}
+  <div class="card level-row {{ 'done' if lv.done }}">
+    <div class="level-num">{{ lv.info.n }}</div>
+    <div style="flex:1">
+      <span class="sticker {{ 'teal' if lv.done else 'coral' }}">{{ lv.info.tag }}</span>
+      <h3 style="margin:2px 0">{{ lv.info.name }} {% if lv.done %}<span class="sticker teal" style="margin:0">Done</span>{% endif %}</h3>
+      <p class="section-sub" style="margin:2px 0">{{ lv.info.lesson }}</p>
+      <div class="progress-track"><div class="progress-fill" style="width:{{ lv.pct|round }}%"></div></div>
+      <p style="margin:6px 0 0; font-weight:700">{{ lv.detail }}</p>
+    </div>
+  </div>
+{% endfor %}
+</div>
+
+<div class="notice" style="margin-top:26px">
+  <strong>Graduation Board preview (Level 5, Traders):</strong> when the market boards are done, you will learn
+  index funds vs. single stocks, why fees quietly eat returns, how compounding turns decades into wealth —
+  and how a custodial account works, as a parent-approved next step. Not a trade button. A graduation.
+</div>
+
+{% endblock %}

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Stock Sprouts{% endblock %} · Stock Sprouts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block head_extra %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="{{ url_for('index') }}">Stock <span>Sprouts</span></a>
+    <nav class="nav">
+      <a href="{{ url_for('play') }}" class="{{ 'active' if request.endpoint == 'play' }}">Play</a>
+      <a href="{{ url_for('portfolio_page') }}" class="{{ 'active' if request.endpoint == 'portfolio_page' }}">Portfolio</a>
+      <a href="{{ url_for('weather') }}" class="{{ 'active' if request.endpoint == 'weather' }}">Weather</a>
+      <a href="{{ url_for('traders') }}" class="{{ 'active' if request.endpoint == 'traders' }}">Traders</a>
+      <a href="{{ url_for('levels') }}" class="{{ 'active' if request.endpoint == 'levels' }}">Levels</a>
+    </nav>
+    {% if profile %}
+      <a class="profile-chip" href="{{ url_for('profile') }}">{{ profile['name'] }}</a>
+    {% else %}
+      <a class="profile-chip" href="{{ url_for('profile') }}">Pick a player</a>
+    {% endif %}
+  </div>
+</header>
+
+<main class="wrap">
+  {% block content %}{% endblock %}
+</main>
+
+<footer>
+  Stock Sprouts · a money game for kids · all money in this game is <strong>pretend money</strong>
+</footer>
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

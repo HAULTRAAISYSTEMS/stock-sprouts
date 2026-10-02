@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Market Weather{% endblock %}
+{% block content %}
+
+<h2 class="section-title">Market Weather <span class="pretend-tag">pretend money</span></h2>
+<p class="section-sub">Just like the sky, the market has weather. Prices go up AND down — and that is completely normal.</p>
+
+<div class="card">
+  <div class="weather-hero">
+    {% if key == "sunny" %}
+    <svg viewBox="0 0 100 100" aria-label="Sunny">
+      <circle cx="50" cy="50" r="22" fill="#ffc93c" stroke="#17324d" stroke-width="4"/>
+      <g stroke="#17324d" stroke-width="4" stroke-linecap="round">
+        <line x1="50" y1="8" x2="50" y2="20"/><line x1="50" y1="80" x2="50" y2="92"/>
+        <line x1="8" y1="50" x2="20" y2="50"/><line x1="80" y1="50" x2="92" y2="50"/>
+        <line x1="20" y1="20" x2="28" y2="28"/><line x1="72" y1="72" x2="80" y2="80"/>
+        <line x1="80" y1="20" x2="72" y2="28"/><line x1="28" y1="72" x2="20" y2="80"/>
+      </g>
+    </svg>
+    {% elif key == "stormy" %}
+    <svg viewBox="0 0 100 100" aria-label="Stormy">
+      <path d="M25 55 a18 18 0 0 1 3-35 a24 24 0 0 1 46-6 a18 18 0 0 1 11 41 z" fill="#9db4c8" stroke="#17324d" stroke-width="4"/>
+      <g stroke="#2a9d8f" stroke-width="5" stroke-linecap="round">
+        <line x1="35" y1="66" x2="30" y2="80"/><line x1="50" y1="66" x2="45" y2="80"/><line x1="65" y1="66" x2="60" y2="80"/>
+      </g>
+    </svg>
+    {% else %}
+    <svg viewBox="0 0 100 100" aria-label="Cloudy">
+      <path d="M25 55 a18 18 0 0 1 3-35 a24 24 0 0 1 46-6 a18 18 0 0 1 11 41 z" fill="#e8e0cf" stroke="#17324d" stroke-width="4"/>
+      <circle cx="72" cy="30" r="12" fill="#ffc93c" stroke="#17324d" stroke-width="4"/>
+    </svg>
+    {% endif %}
+    <h3 style="font-size:1.8rem; margin:10px 0 4px">{{ w.title }}</h3>
+    <p class="weather-line">{{ w.line }}</p>
+    <p class="section-sub">Right now {{ ups }} of {{ total }} companies are up today (average move {{ "%+.2f"|format(avg) }}%).</p>
+  </div>
+</div>
+
+<h2 class="section-title">Why does weather happen?</h2>
+<div class="grid three">
+  <div class="card">
+    <span class="sticker teal">Sunny</span>
+    <h3>Prices go up</h3>
+    <p>Good news — a hit product, big sales, happy customers — makes more people want to buy the stock. More buyers than sellers pushes the price up.</p>
+  </div>
+  <div class="card">
+    <span class="sticker">Stormy</span>
+    <h3>Prices go down</h3>
+    <p>Bad news or scary headlines make people sell. More sellers than buyers pushes the price down. Storms feel bad but they always pass.</p>
+  </div>
+  <div class="card">
+    <span class="sticker coral">Cloudy</span>
+    <h3>Prices stay flat</h3>
+    <p>Sometimes nobody has strong news and prices barely move. The market is just waiting — like clouds before the sky decides.</p>
+  </div>
+</div>
+
+<div class="notice">
+  <strong>The big lesson:</strong> you cannot control the weather — but you can dress for it.
+  Patient owners stay invested through storms instead of panic-selling at the bottom.
+</div>
+
+{% endblock %}

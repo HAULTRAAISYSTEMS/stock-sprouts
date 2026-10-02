@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Spot It. Own It.{% endblock %}
+{% block content %}
+
+<div class="hero">
+  <img src="{{ url_for('static', filename='img/hero.webp') }}" alt="Kids spotting brand icons across a city at dusk">
+  <div class="hero-body">
+    <div class="tagline">SPOT IT. OWN IT.</div>
+    <h1>The stock market game for kids</h1>
+    <p class="lead">Every shoe, game, and snack you love is made by a company — and you can own a tiny piece of it. Spot the brands, collect the companies, and grow your money tree.</p>
+    {% if profile %}
+      <a class="btn" href="{{ url_for('play' if profile['track'] == 'sprouts' else 'traders') }}">Keep playing, {{ profile['name'] }}!</a>
+    {% else %}
+      <a class="btn" href="{{ url_for('profile') }}">Start playing</a>
+    {% endif %}
+    <p class="section-sub" style="margin-top:14px">Prices are {{ price_mode }} · <span class="pretend-tag">pretend money</span></p>
+  </div>
+</div>
+
+<h2 class="section-title">Pick your track</h2>
+<p class="section-sub">Two games, one market. A 7-year-old and a 16-year-old should not play the same game.</p>
+<div class="grid two">
+  <div class="card">
+    <span class="sticker">Ages 6–12</span>
+    <img class="art" src="{{ url_for('static', filename='img/sprouts.webp') }}" alt="Sprouts explorer kid with brand cards and a money tree">
+    <h3>Sprouts</h3>
+    <p>Collect brands you spot in the wild, buy your first slices of real companies, and watch your money tree grow — and drop coins.</p>
+    <a class="btn teal small" href="{{ url_for('profile') }}">Play Sprouts</a>
+  </div>
+  <div class="card">
+    <span class="sticker coral">Ages 13–18</span>
+    <img class="art" src="{{ url_for('static', filename='img/traders.webp') }}" alt="Teen traders with charts and market news">
+    <h3>Traders</h3>
+    <p>Real charts, real headlines, paper portfolios. Make predictions, survive the Correction Gauntlet, and defend your calls.</p>
+    <a class="btn teal small" href="{{ url_for('profile') }}">Play Traders</a>
+  </div>
+</div>
+
+<h2 class="section-title">How it works</h2>
+<div class="grid three">
+  <div class="card">
+    <div class="step-num">1</div>
+    <h3>Spot brands you love</h3>
+    <p>See a swoosh, a golden arch, a game you play every day? Tap "Spot it!" and unlock that company's card.</p>
+  </div>
+  <div class="card">
+    <div class="step-num">2</div>
+    <h3>Buy pretend slices</h3>
+    <p>Every player starts with $1,000 in pretend cash. Buy slices of the companies you spotted — a stock is a slice of a real company.</p>
+  </div>
+  <div class="card">
+    <div class="step-num">3</div>
+    <h3>Grow your money tree</h3>
+    <p>When your companies do well, your tree grows and drops coins. Weather the stormy days — storms always pass.</p>
+  </div>
+</div>
+
+<div class="notice">
+  <strong>A note for parents:</strong> Stock Sprouts runs on real market prices with <strong>pretend money only</strong>.
+  There is no real trading, no brokerage account, and no way to spend real money in the game.
+  It teaches ownership, patience, and how markets really move — the basics, the highs, the lows, and the corrections.
+  Family leagues and subscriptions are coming soon.
+</div>
+
+{% endblock %}

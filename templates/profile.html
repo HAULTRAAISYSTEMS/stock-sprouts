@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Pick a player{% endblock %}
+{% block content %}
+
+<h2 class="section-title">Who is playing?</h2>
+<p class="section-sub">No passwords in this prototype — just pick a name and a track. <span class="pretend-tag">pretend money</span></p>
+
+<div class="grid two">
+  <div class="card">
+    <span class="sticker teal">New player</span>
+    <h3>Create a profile</h3>
+    <form method="post" action="{{ url_for('profile') }}">
+      <div class="field">
+        <label for="name">Your first name</label>
+        <input type="text" id="name" name="name" maxlength="24" placeholder="e.g. Zy" required>
+      </div>
+      <div class="field">
+        <label>Your track</label>
+        <div class="track-pick">
+          <label>
+            <input type="radio" name="track" value="sprouts" checked>
+            <div class="card"><h3>Sprouts</h3><p>Ages 6–12 · collect &amp; grow</p></div>
+          </label>
+          <label>
+            <input type="radio" name="track" value="traders">
+            <div class="card"><h3>Traders</h3><p>Ages 13–18 · decide &amp; defend</p></div>
+          </label>
+        </div>
+      </div>
+      <button class="btn" type="submit">Start with $1,000 pretend cash</button>
+    </form>
+  </div>
+  <div class="card">
+    <span class="sticker">Keep playing</span>
+    <h3>Choose an existing player</h3>
+    {% if profiles %}
+      <div class="grid" style="gap:10px">
+      {% for p in profiles %}
+        <div class="card" style="padding:12px 16px; display:flex; align-items:center; gap:12px;">
+          <div style="flex:1">
+            <strong>{{ p['name'] }}</strong>
+            <span class="sticker {{ 'coral' if p['track'] == 'traders' else 'teal' }}" style="margin:0 0 0 8px">{{ p['track'] }}</span><br>
+            <span class="money">{{ "$%.2f"|format(p['cash']) }} pretend cash</span>
+          </div>
+          <button class="btn small teal" data-pick="{{ p['id'] }}">Play</button>
+        </div>
+      {% endfor %}
+      </div>
+    {% else %}
+      <p>No players yet — create the first one!</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll("[data-pick]").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    try {
+      await api("/api/profile/select", { id: Number(btn.dataset.pick) });
+      window.location.href = "{{ url_for('play') }}";
+    } catch (e) { toast(e.message); }
+  });
+});
+</script>
+{% endblock %}

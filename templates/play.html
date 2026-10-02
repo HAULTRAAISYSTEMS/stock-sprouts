@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Play · Sprouts{% endblock %}
+{% block content %}
+
+<h2 class="section-title">Brand Hunter <span class="pretend-tag">pretend money</span></h2>
+<p class="section-sub">Spot a brand you know, tap <strong>"Spot it!"</strong>, and unlock its company card. Then buy a slice!</p>
+
+<div style="margin-bottom:18px">
+  <span class="progress-pill"><span id="spottedCount">{{ spotted_count }}</span> of 12 brands spotted</span>
+  <div class="progress-track"><div class="progress-fill" id="spottedBar" style="width:{{ (spotted_count/12*100)|round }}%"></div></div>
+</div>
+
+<div class="grid four" id="brandGrid">
+{% for c in cards %}
+  <div class="card brand-card {{ '' if c.spotted else 'locked' }}" data-ticker="{{ c.ticker }}">
+    {% if c.spotted %}
+      <div class="brand-name">{{ c.brand }}</div>
+      <span class="ticker">{{ c.ticker }}</span>
+      <div class="price money" data-price>${{ "%.2f"|format(c.price) }}</div>
+      <div data-chg>{{ (c.change_pct ~ '%') }}</div>
+      <p class="blurb">{{ c.blurb }}</p>
+      <div class="slice-row">
+        <button class="slice-btn" data-buy="10">$10 slice</button>
+        <button class="slice-btn" data-buy="25">$25 slice</button>
+        <button class="slice-btn" data-buy="50">$50 slice</button>
+      </div>
+    {% else %}
+      <div class="lock-face">?</div>
+      <div class="brand-name">Mystery brand</div>
+      <p class="blurb">Spot this brand in the wild to unlock it.</p>
+      <button class="btn small gold" data-spot>Spot it!</button>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+
+<div class="notice">
+  <strong>What is a slice?</strong> A stock is a tiny slice of a real company. When you buy a slice,
+  a piece of {{ cards[0].brand }}, {{ cards[1].brand }}, or any company you spotted becomes <em>yours</em>.
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function paintChg(el, pct) {
+  el.innerHTML = chgSpan(pct);
+}
+
+document.querySelectorAll("[data-chg]").forEach(el => {
+  const card = el.closest(".brand-card");
+  const pctText = el.textContent.trim();
+  const pct = parseFloat(pctText);
+  if (!isNaN(pct)) paintChg(el, pct);
+});
+
+document.querySelectorAll("[data-spot]").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const card = btn.closest(".brand-card");
+    const ticker = card.dataset.ticker;
+    btn.disabled = true;
+    try {
+      const res = await api("/api/spot", { ticker });
+      const q = res.card;
+      card.classList.remove("locked");
+      card.innerHTML =
+        '<div class="brand-name">' + q.brand + "</div>" +
+        '<span class="ticker">' + q.ticker + "</span>" +
+        '<div class="price money" data-price>$' + q.price.toFixed(2) + "</div>" +
+        '<div data-chg></div>' +
+        '<p class="blurb">' + q.blurb + "</p>" +
+        '<div class="slice-row">' +
+        '<button class="slice-btn" data-buy="10">$10 slice</button>' +
+        '<button class="slice-btn" data-buy="25">$25 slice</button>' +
+        '<button class="slice-btn" data-buy="50">$50 slice</button></div>';
+      paintChg(card.querySelector("[data-chg]"), q.change_pct);
+      wireBuyButtons(card);
+      document.getElementById("spottedCount").textContent = res.spotted_count;
+      document.getElementById("spottedBar").style.width = (res.spotted_count / 12 * 100) + "%";
+      toast("Brand spotted! " + q.brand + " unlocked.");
+      if (res.spotted_count >= 10) toast("Brand Hunter badge earned — 10 brands spotted!");
+    } catch (e) { toast(e.message); btn.disabled = false; }
+  });
+});
+
+function wireBuyButtons(scope) {
+  scope.querySelectorAll("[data-buy]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const card = btn.closest(".brand-card");
+      const ticker = card.dataset.ticker;
+      btn.disabled = true;
+      try {
+        await api("/api/buy", { ticker, amount: Number(btn.dataset.buy) });
+        toast("Slice bought! Check your Portfolio to see it grow.");
+      } catch (e) { toast(e.message); }
+      btn.disabled = false;
+    });
+  });
+}
+wireBuyButtons(document);
+</script>
+{% endblock %}

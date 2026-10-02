@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}My Portfolio{% endblock %}
+{% block content %}
+
+<h2 class="section-title">{{ pf.name }}'s Money Tree <span class="pretend-tag">pretend money</span></h2>
+<p class="section-sub">Your slices grow a tree. When your companies do well, the tree drops coins — that is a <strong>dividend</strong>, the company's thank-you note.</p>
+
+<div class="grid two">
+  <div class="card">
+    <span class="sticker teal">The Money Tree</span>
+    <div class="tree-stage" id="treeStage">
+      <div class="tree">
+        <div class="canopy" id="canopy"></div>
+        <div class="trunk"></div>
+      </div>
+      <div class="ground"></div>
+    </div>
+    <div style="text-align:center; margin-top:14px">
+      <button class="btn gold" id="collectBtn">Collect dividends</button>
+      <p class="section-sub" style="margin:8px 0 0">Trees drop coins when your companies share profits.</p>
+    </div>
+  </div>
+  <div class="card">
+    <span class="sticker">Scoreboard</span>
+    <h3 class="money" style="font-size:2rem; margin:4px 0">Total: ${{ "%.2f"|format(pf.total) }}</h3>
+    <p>Pretend cash: <strong class="money">${{ "%.2f"|format(pf.cash) }}</strong></p>
+    <p>In companies: <strong class="money">${{ "%.2f"|format(pf.stock_value) }}</strong></p>
+    <p>Today:
+      {% if pf.day_pl >= 0 %}<span class="chg-up">▲ ${{ "%.2f"|format(pf.day_pl) }}</span>
+      {% else %}<span class="chg-down">▼ ${{ "%.2f"|format(-pf.day_pl) }}</span>{% endif %}
+    </p>
+    <p class="section-sub">{{ pf.holdings|length }} different {{ "company" if pf.holdings|length == 1 else "companies" }} owned</p>
+  </div>
+</div>
+
+<h2 class="section-title">My slices</h2>
+{% if pf.holdings %}
+<table class="portfolio">
+  <thead><tr><th>Company</th><th>Slices</th><th>Price</th><th>Day</th><th>Value</th><th></th></tr></thead>
+  <tbody>
+  {% for h in pf.holdings %}
+    <tr>
+      <td><span class="ticker" style="display:inline-block;font-weight:800;background:var(--navy);color:#fff;border-radius:8px;padding:2px 10px;font-size:.85rem;">{{ h.ticker }}</span> {{ h.brand }}</td>
+      <td class="money">{{ "%.3f"|format(h.qty) }}</td>
+      <td class="money">${{ "%.2f"|format(h.price) }}</td>
+      <td>{% if h.change_pct >= 0 %}<span class="chg-up">▲ {{ "%.2f"|format(h.change_pct) }}%</span>{% else %}<span class="chg-down">▼ {{ "%.2f"|format(-h.change_pct) }}%</span>{% endif %}</td>
+      <td class="money">${{ "%.2f"|format(h.value) }}</td>
+      <td><button class="btn small ghost" data-sell="{{ h.ticker }}" data-qty="{{ h.qty }}">Sell all</button></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="notice"><strong>No slices yet!</strong> Head to <a href="{{ url_for('play') }}">Play</a>, spot a brand, and buy your first slice.</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+// Build the canopy: more companies = more leaves.
+(function () {
+  const canopy = document.getElementById("canopy");
+  const n = {{ leaves }};
+  const spots = [
+    [88,8],[30,30],[146,30],[60,70],[116,70],[88,110],
+    [8,80],[168,80],[40,120],[136,120],[88,140],[110,30],
+    [66,30],[20,55],[156,55],[88,60]
+  ];
+  for (let i = 0; i < n && i < spots.length; i++) {
+    const leaf = document.createElement("div");
+    leaf.className = "leaf";
+    leaf.style.left = spots[i][0] + "px";
+    leaf.style.top = spots[i][1] + "px";
+    canopy.appendChild(leaf);
+  }
+})();
+
+document.getElementById("collectBtn").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try {
+    const res = await api("/api/dividends");
+    const stage = document.getElementById("treeStage");
+    for (let i = 0; i < 8; i++) {
+      const coin = document.createElement("div");
+      coin.className = "coin";
+      coin.style.left = (30 + Math.random() * 55) + "%";
+      coin.style.animationDelay = (Math.random() * 0.5) + "s";
+      stage.appendChild(coin);
+      setTimeout(() => coin.remove(), 2200);
+    }
+    stage.classList.remove("flash");
+    void stage.offsetWidth;
+    stage.classList.add("flash");
+    toast("Cha-ching! Your tree dropped $" + res.payout.toFixed(2) + " in pretend dividends.");
+    setTimeout(() => window.location.reload(), 2400);
+  } catch (err) { toast(err.message); }
+  btn.disabled = false;
+});
+
+document.querySelectorAll("[data-sell]").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    if (!confirm("Sell all your slices of " + btn.dataset.sell + "?")) return;
+    try {
+      const res = await api("/api/sell", { ticker: btn.dataset.sell, qty: Number(btn.dataset.qty) });
+      toast("Sold for $" + res.proceeds.toFixed(2) + " pretend cash.");
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (e) { toast(e.message); }
+  });
+});
+</script>
+{% endblock %}

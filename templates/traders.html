@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Traders{% endblock %}
+{% block content %}
+
+<h2 class="section-title">Traders HQ <span class="pretend-tag">pretend money</span></h2>
+<p class="section-sub">Real prices, real headlines, real judgment. Buying is a decision with a reason — not a vibe. Prices are {{ price_mode }}.</p>
+
+<div class="grid two">
+  <div class="card">
+    <span class="sticker coral">Paper portfolio</span>
+    <h3>Buy &amp; sell full shares</h3>
+    <div class="field">
+      <label for="tTicker">Company</label>
+      <select id="tTicker">
+        {% for t in tickers %}<option value="{{ t.ticker }}">{{ t.brand }} ({{ t.ticker }})</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="tShares">Shares</label>
+      <input type="text" id="tShares" inputmode="decimal" placeholder="e.g. 2">
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn teal small" id="buyBtn">Buy shares</button>
+      <button class="btn ghost small" id="sellBtn">Sell shares</button>
+    </div>
+    <p class="section-sub" style="margin-top:10px">Pretend cash: <strong class="money" id="cashLine">${{ "%.2f"|format(pf.cash) }}</strong> · Portfolio: <strong class="money">${{ "%.2f"|format(pf.total) }}</strong></p>
+    <div id="holdList">
+      {% for h in pf.holdings %}
+      <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:2px dashed #e8e0cf;">
+        <span><strong>{{ h.ticker }}</strong> · {{ "%.3f"|format(h.qty) }} sh</span>
+        <span class="money">${{ "%.2f"|format(h.value) }}</span>
+      </div>
+      {% else %}
+      <p class="section-sub">No positions yet. Build your 5-stock portfolio to start Level 1.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="sticker teal">Reading the chart</span>
+    <h3>7-day price chart</h3>
+    <div class="field">
+      <label for="cTicker">Company</label>
+      <select id="cTicker">
+        {% for t in tickers %}<option value="{{ t.ticker }}" {{ "selected" if t.ticker == "AAPL" }}>{{ t.brand }} ({{ t.ticker }})</option>{% endfor %}
+      </select>
+    </div>
+    <canvas class="chart" id="chart" width="600" height="260"></canvas>
+    <p class="section-sub" id="chartNote" style="margin-top:8px"></p>
+  </div>
+</div>
+
+<div class="grid two" style="margin-top:18px">
+  <div class="card">
+    <span class="sticker">Daily prediction</span>
+    <h3>Call tomorrow's close</h3>
+    <p class="section-sub">Pick a company, call it: up or down tomorrow? Check back tomorrow to see if you were right.</p>
+    <div class="field">
+      <label for="pTicker">Company</label>
+      <select id="pTicker">
+        {% for t in tickers %}<option value="{{ t.ticker }}">{{ t.brand }} ({{ t.ticker }})</option>{% endfor %}
+      </select>
+    </div>
+    <div style="display:flex; gap:10px">
+      <button class="btn small teal" data-dir="up">Up tomorrow</button>
+      <button class="btn small coral" data-dir="down">Down tomorrow</button>
+    </div>
+    <div id="predStatus" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <span class="sticker coral">News moves markets</span>
+    <h3>Headline challenge</h3>
+    <p class="section-sub">Read the headline, call the direction, then see the "why it moved" debrief.</p>
+    <div id="newsDeck">
+      {% for h in headlines %}
+      <div class="card headline-card" data-idx="{{ loop.index0 }}" style="margin-bottom:12px; padding:14px">
+        <p style="font-weight:700; margin:0 0 8px">"{{ h.headline }}"</p>
+        <div style="display:flex; gap:8px">
+          <button class="btn small teal" data-news="up">Stock goes up</button>
+          <button class="btn small coral" data-news="down">Stock goes down</button>
+        </div>
+        <div class="why"><strong>Why it moved:</strong> <span class="why-text"></span><br><span class="why-actual" style="font-weight:800"></span></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <span class="sticker coral">The Correction Gauntlet</span>
+  <h3>Stormy Week simulator</h3>
+  <p class="section-sub">A simulated market storm hits: your whole portfolio drops <strong>15%</strong> in one week. Do you <strong>hold on</strong> through the storm, or <strong>panic sell</strong> at the bottom? There is no wrong practice run — only lessons.</p>
+  <div id="stormBox">
+    {% if storm_active %}
+      <p><strong>The storm is here.</strong> Your portfolio is down 15%. What do you do?</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <button class="btn teal" data-storm="hold">Hold on — storms pass</button>
+        <button class="btn coral" data-storm="sell">Panic sell everything</button>
+      </div>
+    {% else %}
+      <button class="btn" id="stormStart">Start a Stormy Week</button>
+    {% endif %}
+  </div>
+  <div id="stormResult" style="margin-top:14px"></div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+// ---- buy / sell ----
+document.getElementById("buyBtn").addEventListener("click", async () => {
+  const ticker = document.getElementById("tTicker").value;
+  const shares = parseFloat(document.getElementById("tShares").value);
+  if (!shares || shares <= 0) { toast("Enter how many shares first."); return; }
+  try {
+    await api("/api/buy", { ticker, shares });
+    toast("Bought " + shares + " shares of " + ticker + " (pretend money).");
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) { toast(e.message); }
+});
+document.getElementById("sellBtn").addEventListener("click", async () => {
+  const ticker = document.getElementById("tTicker").value;
+  const shares = parseFloat(document.getElementById("tShares").value);
+  if (!shares || shares <= 0) { toast("Enter how many shares first."); return; }
+  try {
+    const res = await api("/api/sell", { ticker, qty: shares });
+    toast("Sold for $" + res.proceeds.toFixed(2) + " pretend cash.");
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) { toast(e.message); }
+});
+
+// ---- chart ----
+async function drawChart() {
+  const ticker = document.getElementById("cTicker").value;
+  const res = await api("/api/history?ticker=" + ticker);
+  const pts = res.points;
+  const cv = document.getElementById("chart");
+  const ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height, pad = 34;
+  ctx.clearRect(0, 0, W, H);
+  if (!pts.length) return;
+  const vals = pts.map(p => p.close);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || 1;
+  const X = i => pad + i * (W - 2 * pad) / (pts.length - 1);
+  const Y = v => H - pad - (v - lo) / span * (H - 2 * pad);
+  // grid
+  ctx.strokeStyle = "#e8e0cf"; ctx.lineWidth = 2;
+  for (let g = 0; g <= 3; g++) {
+    const y = pad + g * (H - 2 * pad) / 3;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke();
+  }
+  // area + line
+  const up = vals[vals.length - 1] >= vals[0];
+  const line = up ? "#2a9d8f" : "#e05252";
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(X(i), Y(p.close)) : ctx.moveTo(X(0), Y(p.close)));
+  ctx.strokeStyle = line; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke();
+  ctx.lineTo(X(pts.length - 1), H - pad); ctx.lineTo(X(0), H - pad); ctx.closePath();
+  ctx.fillStyle = up ? "rgba(42,157,143,.15)" : "rgba(224,82,82,.15)"; ctx.fill();
+  // dots + labels
+  ctx.fillStyle = "#17324d"; ctx.font = "bold 13px 'Baloo 2', sans-serif";
+  pts.forEach((p, i) => {
+    ctx.beginPath(); ctx.arc(X(i), Y(p.close), 5, 0, 7); ctx.fillStyle = line; ctx.fill();
+    ctx.fillStyle = "#17324d";
+    if (i % 2 === 0 || i === pts.length - 1) ctx.fillText(p.label, X(i) - 18, H - 10);
+  });
+  const chg = ((vals[vals.length - 1] - vals[0]) / vals[0] * 100).toFixed(2);
+  document.getElementById("chartNote").innerHTML =
+    ticker + " 7-day range: <strong>$" + lo.toFixed(2) + " – $" + hi.toFixed(2) + "</strong> (" + (chg >= 0 ? "+" : "") + chg + "%). " +
+    "Find the high. Find the low. Where did it change its mind?";
+}
+document.getElementById("cTicker").addEventListener("change", drawChart);
+drawChart();
+
+// ---- predictions ----
+document.querySelectorAll("[data-dir]").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    try {
+      const res = await api("/api/predict", { ticker: document.getElementById("pTicker").value, direction: btn.dataset.dir });
+      toast("Locked in: " + res.ticker + " " + res.direction + " by " + res.target_date + ". Check back tomorrow!");
+      refreshPrediction();
+    } catch (e) { toast(e.message); }
+  });
+});
+async function refreshPrediction() {
+  const box = document.getElementById("predStatus");
+  try {
+    const res = await api("/api/prediction");
+    const pr = res.prediction;
+    if (!pr) { box.innerHTML = "<p class='section-sub'>No prediction yet — make your first call above.</p>"; return; }
+    if (pr.resolved) {
+      box.innerHTML = "<p><strong>" + pr.ticker + " " + pr.direction + ":</strong> " +
+        (pr.correct ? "You called it! Honest scorekeeping: 1 for 1." : "Missed it — the market keeps everyone humble.") + "</p>";
+    } else {
+      box.innerHTML = "<p>Prediction live: <strong>" + pr.ticker + " " + pr.direction + "</strong> by " + pr.target_date + ". Come back then to score it.</p>";
+    }
+  } catch (e) { /* silent */ }
+}
+refreshPrediction();
+
+// ---- news game ----
+document.querySelectorAll("[data-news]").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const card = btn.closest(".headline-card");
+    const idx = Number(card.dataset.idx);
+    btn.disabled = true;
+    try {
+      const res = await api("/api/news_guess", { index: idx, direction: btn.dataset.news });
+      card.classList.add("revealed");
+      card.querySelector(".why-text").textContent = res.why;
+      card.querySelector(".why-actual").innerHTML =
+        (res.correct ? "You called it! " : "Not this time. ") +
+        res.brand + " actually moved " + (res.actual === "up" ? "up" : "down") +
+        " (" + (res.actual_change >= 0 ? "+" : "") + res.actual_change.toFixed(2) + "% today).";
+      toast(res.correct ? "Sharp call!" : "The market surprised you — that's the lesson.");
+    } catch (e) { toast(e.message); btn.disabled = false; }
+  });
+});
+
+// ---- storm simulator ----
+const stormBox = document.getElementById("stormBox");
+const stormStartBtn = document.getElementById("stormStart");
+if (stormStartBtn) {
+  stormStartBtn.addEventListener("click", async () => {
+    try {
+      const res = await api("/api/storm", { action: "start" });
+      stormBox.innerHTML =
+        "<p><strong>The storm is here.</strong> Your $" + res.v0.toFixed(2) + " portfolio just dropped " + res.drop_pct + "%. What do you do?</p>" +
+        '<div style="display:flex; gap:10px; flex-wrap:wrap">' +
+        '<button class="btn teal" data-storm="hold">Hold on — storms pass</button>' +
+        '<button class="btn coral" data-storm="sell">Panic sell everything</button></div>';
+      wireStorm();
+    } catch (e) { toast(e.message); }
+  });
+}
+function wireStorm() {
+  stormBox.querySelectorAll("[data-storm]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        const res = await api("/api/storm", { action: btn.dataset.storm });
+        const box = document.getElementById("stormResult");
+        box.innerHTML =
+          '<div class="card" style="border-color:' + (res.choice === "hold" ? "var(--teal)" : "var(--red)") + '">' +
+          "<h3>" + (res.choice === "hold" ? "You held on." : "You panic sold.") + "</h3>" +
+          "<p>Before the storm: <strong class='money'>$" + res.v0.toFixed(2) + "</strong><br>" +
+          "At the bottom: <strong class='money'>$" + res.v_storm.toFixed(2) + "</strong><br>" +
+          "After the recovery: <strong class='money'>$" + res.v_end.toFixed(2) + "</strong></p>" +
+          "<p><strong>The lesson:</strong> " + res.lesson + "</p></div>";
+        stormBox.innerHTML = "<p>Storm survived. Run it again any time — the lesson compounds.</p>" +
+          '<button class="btn small" onclick="window.location.reload()">Run another storm</button>';
+        toast(res.choice === "hold" ? "Patience paid." : "Ouch — locked in the loss.");
+      } catch (e) { toast(e.message); }
+    });
+  });
+}
+wireStorm();
+</script>
+{% endblock %}
