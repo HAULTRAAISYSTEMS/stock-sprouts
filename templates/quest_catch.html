@@ -4,17 +4,23 @@
 {% block content %}
 <div class="game-shell">
   <h2 class="q-sec-title">Coin <span class="gold">Catch</span></h2>
-  <p class="game-tip">Tap the falling coins to catch them — <strong>don't tap the money pits!</strong> <span class="pretend-tag">pretend money</span></p>
+  <p class="game-tip">Run! <strong>Swipe</strong> (or arrows) to dodge — <strong>← →</strong> switch lanes, <strong>↑</strong> jump the pits &amp; barriers, <strong>↓</strong> slide under the toll gates. Grab every coin! <span class="pretend-tag">pretend money</span></p>
 
   <div class="game-hud">
-    <span class="stat-pill"><span id="catchTime">30s</span></span>
+    <span class="stat-pill"><span id="catchTime">45s</span></span>
     <span class="stat-pill gold">{{ icon('star', 'ic') }} Score: <span id="catchScore">0</span></span>
     <span class="stat-pill">Lv 1</span>
   </div>
 
   <div id="gameArea">
     <canvas id="catchCanvas"></canvas>
-    <p class="game-tip mt" id="catchHint">Get ready… catch as many coins as you can in 30 seconds!</p>
+    <div class="run-pad" aria-label="Game controls">
+      <button class="run-btn" data-runner="left" aria-label="Move left">{{ icon('chevL', 'ic lg') }}</button>
+      <button class="run-btn" data-runner="jump" aria-label="Jump">{{ icon('chevU', 'ic lg') }}</button>
+      <button class="run-btn" data-runner="slide" aria-label="Slide">{{ icon('chevD', 'ic lg') }}</button>
+      <button class="run-btn" data-runner="right" aria-label="Move right">{{ icon('chevR', 'ic lg') }}</button>
+    </div>
+    <p class="game-tip mt" id="catchHint">Get ready… 45 seconds on the clock!</p>
   </div>
 
   <div id="catchResult" style="display:none">
@@ -38,7 +44,7 @@
 function runCatch() {
   document.getElementById("gameArea").style.display = "block";
   document.getElementById("catchResult").style.display = "none";
-  document.getElementById("catchHint").textContent = "Go! Tap the coins!";
+  document.getElementById("catchHint").textContent = "Go! Swipe, arrows, or the buttons — run!";
   initCoinCatch("catchCanvas", async ({ score, caught }) => {
     document.getElementById("gameArea").style.display = "none";
     try {
