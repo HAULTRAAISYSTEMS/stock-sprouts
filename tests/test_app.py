@@ -49,17 +49,20 @@ def test_landing_loads(client):
     assert b"START YOUR JOURNEY" in res.data
 
 
-def test_api_prices_returns_12_tickers(client):
+def test_api_prices_returns_13_tickers(client):
     res = client.get("/api/prices")
     assert res.status_code == 200
     body = res.get_json()
     assert body["ok"] is True
     prices = body["prices"]
-    assert len(prices) == 12
+    assert len(prices) == 13
     for sym, q in prices.items():
         assert q["price"] > 0
         assert "prev_close" in q and "change_pct" in q
         assert q["brand"] and q["blurb"]
+    # NVDA joined the brand grid (Bull Run brand token).
+    assert "NVDA" in prices
+    assert "AI" in prices["NVDA"]["blurb"]
 
 
 def test_simulator_is_deterministic():
@@ -238,15 +241,22 @@ def test_coin_catch_submit_awards_coins_and_badge(client):
     res = client.post("/api/game/catch", json={"score": 250, "caught": 22})
     body = res.get_json()
     assert body["ok"] is True
-    assert body["coins_earned"] == 25  # score // 10
+    # first Bull Run of the day: daily double applies
+    assert body["doubled"] is True
+    assert body["coins_earned"] == 50  # (score // 10) x2
+    assert body["cash_awarded"] == 24  # (score // 20) x2, pretend cash for stocks
     assert body["badge"] == "coin-catcher"
 
     row = _profile_row("CatchKid")
-    assert row["coins"] == pytest.approx(25.0)
+    assert row["coins"] == pytest.approx(50.0)
+    assert row["cash"] == pytest.approx(1024.0)  # 1000 starting + 24
 
     # quest pages render
     assert client.get("/quest/q1/play").status_code == 200
     assert client.get("/quest/q1/quiz").status_code == 200
+    res = client.get("/quest/q1/play")
+    assert b"Bull Run" in res.data
+    assert b"bullrun-splash.webp" in res.data
 
 
 def test_quest1_completion_awards_and_unlocks_bank(client):
@@ -279,8 +289,8 @@ def test_quest1_completion_awards_and_unlocks_bank(client):
     assert body["xp_earned"] == 50
     assert "money-bank" in body["unlocks"]
     assert body["badge"] == "first-steps"
-    # 10 (catch) + 100 (quest) coins
-    assert body["coins"] == pytest.approx(110.0)
+    # 20 (catch, daily-double 2x) + 100 (quest) coins
+    assert body["coins"] == pytest.approx(120.0)
 
     row = _profile_row("Q1Kid2")
     assert row["xp"] == 50
@@ -290,7 +300,7 @@ def test_quest1_completion_awards_and_unlocks_bank(client):
     body = res.get_json()
     assert body["already"] is True
     row = _profile_row("Q1Kid2")
-    assert row["coins"] == pytest.approx(110.0)
+    assert row["coins"] == pytest.approx(120.0)
 
     # bank is now unlocked and accepts deposits
     res = client.get("/bank")
@@ -300,7 +310,7 @@ def test_quest1_completion_awards_and_unlocks_bank(client):
     body = res.get_json()
     assert body["ok"] is True
     assert body["bank_balance"] == pytest.approx(60.0)
-    assert body["coins"] == pytest.approx(50.0)
+    assert body["coins"] == pytest.approx(60.0)
 
 
 def test_bank_locked_before_quest1(client):
@@ -377,3 +387,102 @@ def test_mascot_names_per_approved_direction(client):
     res = client.get("/")
     assert res.status_code == 200
     assert b"Benny Bull" in res.data and b"Barry Bear" in res.data
+
+
+def _holdings(name):
+    import sqlite3
+    db = sqlite3.connect(app_module.db_path())
+    db.row_factory = sqlite3.Row
+    rows = db.execute(
+        "SELECT ticker, qty FROM holdings WHERE profile_id = "
+        "(SELECT id FROM profiles WHERE name = ?)", (name,)).fetchall()
+    db.close()
+    return {r["ticker"]: r["qty"] for r in rows}
+
+
+def _badges(name):
+    import sqlite3
+    db = sqlite3.connect(app_module.db_path())
+    db.row_factory = sqlite3.Row
+    rows = db.execute(
+        "SELECT badge_id FROM badges WHERE profile_id = "
+        "(SELECT id FROM profiles WHERE name = ?)", (name,)).fetchall()
+    db.close()
+    return {r["badge_id"] for r in rows}
+
+
+def test_bullrun_tokens_award_stock_slice(client):
+    """3 brand tokens in a run -> one $5 stock slice at the market price."""
+    import market
+    _make_v2_profile(client, name="TokenKid", bracket="junior")
+    res = client.post("/api/game/catch",
+                      json={"score": 300, "caught": 25,
+                            "tokens": {"MCD": 3, "NVDA": 1}})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["tokens"] == {"MCD": 3, "NVDA": 1}
+    # only MCD reached 3 -> exactly one slice
+    assert body["slices_earned"] == [
+        {"ticker": "MCD", "brand": "McDonald's",
+         "qty": round(5.0 / market.get_prices()["MCD"]["price"], 4)}
+    ]
+    holdings = _holdings("TokenKid")
+    assert "MCD" in holdings
+    assert holdings["MCD"] == pytest.approx(
+        5.0 / market.get_prices()["MCD"]["price"])
+    assert "NVDA" not in holdings
+    # brand-collector badge granted on the first slice
+    assert body["badge2"] == "brand-collector"
+    assert "brand-collector" in _badges("TokenKid")
+
+
+def test_bullrun_fortnite_token_grants_bonus_coins_not_holdings(client):
+    """Fortnite is not publicly traded: +25 Stock Coins, no holdings."""
+    _make_v2_profile(client, name="FnKid", bracket="explorer")
+    res = client.post("/api/game/catch",
+                      json={"score": 100, "caught": 5,
+                            "tokens": {"FORTNITE": 2}})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["slices_earned"] == []
+    assert body["bonus_note"] is not None
+    assert "stock market" in body["bonus_note"]
+    assert _holdings("FnKid") == {}
+    # 20 Stock Coins (10 x2 daily double) + 25 Fortnite bonus
+    assert _profile_row("FnKid")["coins"] == pytest.approx(45.0)
+
+
+def test_bullrun_cash_award_formula_and_cap(client):
+    """cash_awarded = min(score // 20, 50) — real pretend cash for stocks."""
+    _make_v2_profile(client, name="CashKid", bracket="junior")
+    # first run of the day: doubled
+    b1 = client.post("/api/game/catch",
+                     json={"score": 400, "caught": 10}).get_json()
+    assert b1["doubled"] is True
+    assert b1["cash_awarded"] == 40
+    # second run: base formula, no double
+    b2 = client.post("/api/game/catch",
+                     json={"score": 400, "caught": 10}).get_json()
+    assert b2["doubled"] is False
+    assert b2["cash_awarded"] == 20  # 400 // 20
+    # huge score: capped at 50
+    b3 = client.post("/api/game/catch",
+                     json={"score": 2000, "caught": 10}).get_json()
+    assert b3["cash_awarded"] == 50
+    assert b3["coins_earned"] == 100  # score // 10 capped at 100
+    assert _profile_row("CashKid")["cash"] == pytest.approx(1000 + 40 + 20 + 50)
+
+
+def test_bullrun_daily_double_only_once_per_day(client):
+    """2x coins and 2x cash on the first Bull Run each calendar day."""
+    _make_v2_profile(client, name="DoubleKid", bracket="explorer")
+    first = client.post("/api/game/catch",
+                        json={"score": 100, "caught": 5}).get_json()
+    second = client.post("/api/game/catch",
+                         json={"score": 100, "caught": 5}).get_json()
+    assert first["doubled"] is True
+    assert first["coins_earned"] == 20   # (100 // 10) x2
+    assert first["cash_awarded"] == 10   # (100 // 20) x2
+    assert second["doubled"] is False
+    assert second["coins_earned"] == 10
+    assert second["cash_awarded"] == 5

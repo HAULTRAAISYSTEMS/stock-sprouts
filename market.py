@@ -35,6 +35,7 @@ TICKERS = [
     {"ticker": "TSLA",  "brand": "Tesla",       "blurb": "Electric cars that can drive themselves."},
     {"ticker": "AMZN",  "brand": "Amazon",      "blurb": "The store that delivers almost anything to your door."},
     {"ticker": "MSFT",  "brand": "Microsoft",   "blurb": "Windows, Xbox games, and Minecraft."},
+    {"ticker": "NVDA",  "brand": "Nvidia",      "blurb": "The computer chips that power AI and video games."},
     {"ticker": "GOOGL", "brand": "Google",      "blurb": "Search, YouTube videos, and Android phones."},
     {"ticker": "WMT",   "brand": "Walmart",     "blurb": "The giant store where families buy everything."},
     {"ticker": "MAT",   "brand": "Mattel",      "blurb": "Hot Wheels cars and Barbie dolls."},
@@ -44,7 +45,7 @@ TICKERS = [
 _BASE_PRICE = {
     "RBLX": 78.0, "NKE": 92.0, "MCD": 305.0, "DIS": 118.0,
     "AAPL": 238.0, "SBUX": 98.0, "TSLA": 255.0, "AMZN": 225.0,
-    "MSFT": 512.0, "GOOGL": 242.0, "WMT": 97.0, "MAT": 21.0,
+    "MSFT": 512.0, "NVDA": 175.0, "GOOGL": 242.0, "WMT": 97.0, "MAT": 21.0,
 }
 
 _DAILY_VOL = 0.018          # ~1.8% daily wiggle

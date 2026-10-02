@@ -406,7 +406,7 @@ def city():
         {"id": "starter", "name": "Starter Town", "art": "starter-town.webp",
          "href": url_for("quest_intro", qid="q1"),
          "state": "done" if "q1" in st["done"] else "open",
-         "sub": "Quest 1 · What Is Money?"},
+         "sub": "BULL RUN \u2014 play to earn stock money"},
         {"id": "mart", "name": "Quest Mart", "art": "quest-mart.webp",
          "href": url_for("quest_intro", qid="q2"),
          "state": "done" if "q2" in st["done"] else "open",
@@ -899,9 +899,14 @@ def api_coins_add():
                     "leveled_up": leveled})
 
 
+# Bull Run brand tokens: 3 of one brand in a run -> one $5 stock slice.
+TOKEN_TICKERS = {"MCD", "NVDA", "RBLX", "NKE", "AAPL", "DIS"}
+TOKEN_SLICE_USD = 5.0
+
+
 @app.post("/api/game/catch")
 def api_game_catch():
-    """Coin Catch results: score -> Stock Coins, step flag, maybe a badge."""
+    """Bull Run results: score -> Stock Coins + pretend cash, brand tokens -> stock slices."""
     p, err = _profile_or_401()
     if err:
         return err
@@ -911,14 +916,66 @@ def api_game_catch():
         caught = max(0, int(data.get("caught", 0)))
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "That score did not make sense."}), 400
+    raw_tokens = data.get("tokens") or {}
+    tokens = {}
+    for k, v in (raw_tokens.items() if isinstance(raw_tokens, dict) else []):
+        key = str(k).upper()
+        if key in TOKEN_TICKERS or key == "FORTNITE":
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                tokens[key] = min(n, 50)
     coins_earned = min(score // 10, 100)
+    cash_awarded = min(score // 20, 50)
+    # Daily double: the first Bull Run per calendar day earns 2x coins and 2x cash.
+    today = datetime.now().date().isoformat()
+    doubled = get_meta(p["id"], "bullrun_last_2x") != today
+    if doubled:
+        set_meta(p["id"], "bullrun_last_2x", today)
+        coins_earned *= 2
+        cash_awarded *= 2
     coins, xp, level, leveled = award(p["id"], coins=coins_earned)
+    db = get_db()
+    if cash_awarded > 0:
+        db.execute("UPDATE profiles SET cash = cash + ? WHERE id = ?",
+                   (cash_awarded, p["id"]))
     set_meta(p["id"], "q1_caught", "1")
     set_meta(p["id"], "q1_best", str(max(score, int(get_meta(p["id"], "q1_best", "0") or 0))))
     badge = grant_badge(p["id"], "coin-catcher") if caught >= 20 else False
-    return jsonify({"ok": True, "score": score, "caught": caught,
+    # Brand tokens -> $5 stock slices (one slice per brand that reached 3).
+    prices = market.get_prices()
+    brand_for = {t["ticker"]: t["brand"] for t in market.TICKERS}
+    slices_earned = []
+    for key, n in tokens.items():
+        if key == "FORTNITE" or key not in prices or n < 3:
+            continue
+        price = prices[key]["price"]
+        qty = TOKEN_SLICE_USD / price if price > 0 else 0
+        if qty <= 0:
+            continue
+        db.execute("INSERT INTO holdings (profile_id, ticker, qty) VALUES (?, ?, ?) "
+                   "ON CONFLICT (profile_id, ticker) DO UPDATE SET qty = qty + excluded.qty",
+                   (p["id"], key, qty))
+        slices_earned.append({"ticker": key, "brand": brand_for.get(key, key),
+                              "qty": round(qty, 4)})
+    bonus_note = None
+    if tokens.get("FORTNITE"):
+        # Fortnite is not publicly traded: bonus Stock Coins + teachable moment.
+        coins, xp, level, leveled = award(p["id"], coins=25)
+        bonus_note = ("Some companies you love aren't on the stock market "
+                      "\u2014 yet! +25 bonus Stock Coins.")
+    brand_badge = ("brand-collector"
+                   if slices_earned and grant_badge(p["id"], "brand-collector")
+                   else None)
+    db.commit()
+    return jsonify({"ok": True, "score": score, "caught": caught, "tokens": tokens,
                     "coins_earned": coins_earned, "coins": coins,
-                    "badge": "coin-catcher" if badge else None})
+                    "cash_awarded": cash_awarded, "doubled": doubled,
+                    "slices_earned": slices_earned, "bonus_note": bonus_note,
+                    "badge": "coin-catcher" if badge else None,
+                    "badge2": brand_badge})
 
 
 @app.post("/api/game/sort")

@@ -146,11 +146,11 @@ QUESTS = [
         "dialogue": [
             ("benny-bull", "Hey! I'm Benny Bull. I'll guide you on your quests and show you how money works!"),
             ("benny-bull", "Money helps us get the things we need and the things we want. You can earn it, spend it, or save it."),
-            ("benny-bull", "Your mission: catch coins, then prove what you've learned. Let's go!"),
+            ("benny-bull", "Your mission: run the Bull Run, snag brand tokens, then prove what you've learned. Let's go!"),
         ],
         "steps": [
-            {"kind": "game", "label": "Play the Coin Catch game", "href": "/quest/q1/play",
-             "done_key": "q1_caught", "done_label": "Coins caught"},
+            {"kind": "game", "label": "Play Bull Run to earn money for stocks!", "href": "/quest/q1/play",
+             "done_key": "q1_caught", "done_label": "Bull Run played"},
             {"kind": "quiz", "label": "Complete the money quiz", "href": "/quest/q1/quiz",
              "done_key": "q1_quiz_passed", "done_label": "Quiz passed"},
         ],
@@ -230,7 +230,8 @@ SORT_ITEMS = [
 # Badges shown on the player profile.
 BADGES = [
     {"id": "first-steps", "name": "First Steps", "desc": "Completed Quest 1: What Is Money?", "icon": "star"},
-    {"id": "coin-catcher", "name": "Coin Catcher", "desc": "Caught 20 coins in Coin Catch", "icon": "target"},
+    {"id": "coin-catcher", "name": "Coin Catcher", "desc": "Caught 20 coins in Bull Run", "icon": "target"},
+    {"id": "brand-collector", "name": "Brand Collector", "desc": "Earned a stock slice from Bull Run brand tokens", "icon": "trophy"},
     {"id": "smart-shopper", "name": "Smart Shopper", "desc": "Completed Quest 2: Needs vs. Wants", "icon": "cart"},
     {"id": "shareholder", "name": "Shareholder", "desc": "Own a slice of a real company", "icon": "coin"},
     {"id": "saver", "name": "Super Saver", "desc": "Deposited Stock Coins in the Money Bank", "icon": "bank"},
