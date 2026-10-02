@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from datetime import datetime
 
 import pytest
 
@@ -13,6 +14,19 @@ os.environ["STOCK_SPROUTS_DB"] = _tmp.name
 import app as app_module  # noqa: E402
 
 app_module.app.config["TESTING"] = True
+
+
+@pytest.fixture(autouse=True)
+def _frozen_market_time(monkeypatch):
+    """Freeze the simulator's intraday clock so prices can't drift mid-test."""
+    import market
+
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 1, 12, 0, 0)
+
+    monkeypatch.setattr(market, "datetime", _FrozenDateTime)
 
 
 @pytest.fixture()
