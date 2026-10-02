@@ -1,0 +1,43 @@
+{% from "_icons.html" import icon, avatar %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Stock Quest{% endblock %} · Stock Quest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/quest.css') }}">
+{% block head_extra %}{% endblock %}
+</head>
+<body class="quest-body">
+<div class="stars" aria-hidden="true"></div>
+<header class="q-topbar">
+  <div class="q-wrap q-topbar-in">
+    <a class="q-logo" href="{{ url_for('city') if profile else url_for('index') }}">STOCK <span>QUEST</span></a>
+    {% if profile and v2 %}
+    <a class="q-chip" href="{{ url_for('me') }}">
+      {{ avatar(v2.avatar, "sm") }}
+      <span class="q-chip-stats">
+        <strong>{{ profile['name'] }}</strong>
+        <span class="q-chip-line">{{ icon('coins', 'ic xs') }} {{ v2.coins|int }} · Lv {{ v2.level.n }} {{ v2.level.name }}</span>
+      </span>
+    </a>
+    {% endif %}
+  </div>
+</header>
+
+<main class="q-wrap">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="q-foot">
+  Stock Quest · a money game for kids · all money in this game is <strong>pretend money</strong>
+</footer>
+<div class="toast" id="toast"></div>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/quest.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

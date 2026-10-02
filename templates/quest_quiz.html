@@ -1,0 +1,63 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Money Quiz{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">The Money <span class="gold">Quiz</span></h2>
+<p class="q-sec-sub">Get 2 out of 3 right to finish the quest. <span class="pretend-tag">pretend money</span></p>
+
+<div class="q-card" id="quizBox">
+  {% for item in quiz %}
+  <div class="quiz-q" data-q="{{ loop.index0 }}">
+    <p>{{ loop.index }}. {{ item.q }}</p>
+    {% for c in item.choices %}
+    <button type="button" class="quiz-opt" data-a="{{ loop.index0 }}">{{ c }}</button>
+    {% endfor %}
+    <p class="quiz-why" style="display:none"></p>
+  </div>
+  {% endfor %}
+  <div class="center mt">
+    <button class="btn-gold big" id="quizSubmit">Check my answers</button>
+  </div>
+</div>
+
+<div class="q-card gold-edge" id="quizResult" style="display:none">
+  <h3 class="center" id="quizHeadline"></h3>
+  <div class="center mt btn-row" style="justify-content:center">
+    <button class="btn-ghost" id="quizRetry">Try again</button>
+    <a class="btn-gold" id="quizNext" href="{{ url_for('quest_complete_page', qid='q1') }}" style="display:none">Claim my reward</a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const picked = {};
+document.querySelectorAll(".quiz-q").forEach(q => {
+  const qi = Number(q.dataset.q);
+  q.querySelectorAll(".quiz-opt").forEach(btn => {
+    btn.addEventListener("click", () => {
+      q.querySelectorAll(".quiz-opt").forEach(b => b.classList.remove("sel"));
+      btn.classList.add("sel");
+      picked[qi] = Number(btn.dataset.a);
+    });
+  });
+});
+
+document.getElementById("quizSubmit").addEventListener("click", async () => {
+  const answers = [0, 1, 2].map(i => (picked[i] !== undefined ? picked[i] : -1));
+  if (answers.includes(-1)) { toast("Answer all 3 questions first!"); return; }
+  try {
+    const res = await api("/api/game/quiz", { answers });
+    document.getElementById("quizBox").style.display = "none";
+    const box = document.getElementById("quizResult");
+    box.style.display = "block";
+    document.getElementById("quizHeadline").textContent =
+      res.passed
+        ? "You got " + res.correct + " of " + res.total + " — quiz passed!"
+        : "You got " + res.correct + " of " + res.total + " — give it another shot!";
+    if (res.passed) document.getElementById("quizNext").style.display = "inline-block";
+    window.scrollTo(0, 0);
+  } catch (e) { toast(e.message); }
+});
+document.getElementById("quizRetry").addEventListener("click", () => window.location.reload());
+</script>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Quest Complete{% endblock %}
+{% block content %}
+<div class="center mt" id="claimBox">
+  <div class="q-card gold-edge">
+    <h2 class="q-sec-title" style="margin-top:0">{{ q.title }}</h2>
+    <p class="q-sec-sub">Finishing touches…</p>
+    <button class="btn-gold big" id="claimBtn">CLAIM MY REWARD</button>
+    <p class="game-tip" id="claimErr"></p>
+  </div>
+</div>
+
+<div id="doneBox" style="display:none">
+  <div class="ribbon">QUEST COMPLETE!</div>
+  <div class="stars-row">{{ icon('star', 'ic') }}{{ icon('star', 'ic') }}{{ icon('star', 'ic') }}</div>
+
+  <div class="q-card gold-edge">
+    <ul class="check-list" id="learnList"></ul>
+    <div class="big-rewards">
+      <div class="big-reward"><b id="rwCoins">+0</b>Stock Coins</div>
+      <div class="big-reward"><b id="rwXp">+0</b>XP</div>
+    </div>
+    <div id="unlockBox"></div>
+    <div class="center mt btn-row" style="justify-content:center" id="doneBtns"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const QID = {{ q.id | tojson }};
+const UNLOCK_HREF = { "money-bank": {{ url_for('bank') | tojson }} };
+const UNLOCK_LABEL = { "money-bank": "GO TO MONEY BANK" };
+const LEARN = {
+  q1: ["Learned what money is", "Caught coins in the Coin Catch game", "Passed the money quiz"],
+  q2: ["Learned the difference between Needs and Wants", "Sorted 6 items like a smart shopper"],
+  q3: ["Learned what a stock is", "Bought a first slice of a real company"]
+};
+document.getElementById("claimBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("claimBtn");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/quest/complete", { quest_id: QID });
+    document.getElementById("claimBox").style.display = "none";
+    document.getElementById("doneBox").style.display = "block";
+    document.getElementById("learnList").innerHTML =
+      (LEARN[QID] || []).map(t =>
+        '<li><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>' + t + "</li>"
+      ).join("");
+    document.getElementById("rwCoins").textContent = "+" + (res.coins_earned || 0);
+    document.getElementById("rwXp").textContent = "+" + (res.xp_earned || 0);
+    let html = "";
+    if (res.leveled_up) html += '<p class="center"><span class="badge-state done">LEVEL UP! Now Level ' + res.level.n + " " + res.level.name + "</span></p>";
+    if (res.badge) html += '<p class="center"><span class="badge-state open">BADGE EARNED</span></p>';
+    (res.unlocks || []).forEach(u => {
+      html += '<div class="unlock-banner"><b>' + u.replace("-", " ").toUpperCase() + ' UNLOCKED!</b><br><span class="section-sub">Now you can save your Stock Coins and watch them grow!</span></div>';
+    });
+    document.getElementById("unlockBox").innerHTML = html;
+    let btns = "";
+    (res.unlocks || []).forEach(u => {
+      if (UNLOCK_HREF[u]) btns += '<a class="btn-gold" href="' + UNLOCK_HREF[u] + '">' + (UNLOCK_LABEL[u] || "GO") + "</a>";
+    });
+    btns += '<a class="btn-ghost" href=' + {{ url_for('city') | tojson }} + '>Back to Fortune City</a>';
+    document.getElementById("doneBtns").innerHTML = btns;
+    if (res.already) toast("Already claimed — no double rewards!");
+    window.scrollTo(0, 0);
+  } catch (e) {
+    document.getElementById("claimErr").textContent = e.message;
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

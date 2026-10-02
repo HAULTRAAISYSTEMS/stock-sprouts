@@ -1,0 +1,30 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Parents & Educators{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">Parents <span class="gold">&amp;</span> Educators</h2>
+<p class="q-sec-sub">What Stock Quest is — and what it is not.</p>
+
+<div class="q-grid two">
+  <div class="q-card">
+    <h3>{{ icon('check', 'ic gold') }} What kids learn</h3>
+    <p class="section-sub">Earning, spending, and saving · needs vs. wants · what a stock is · why prices move up and down · dividends · diversification · corrections and crashes — experienced safely in a simulator before real money ever enters the picture.</p>
+  </div>
+  <div class="q-card">
+    <h3>{{ icon('lock', 'ic gold') }} Safety guardrails</h3>
+    <p class="section-sub">All money is <strong>pretend money</strong>, labeled everywhere. No real brokerage accounts, no real trading, no chat or contact with strangers, no gambling mechanics, no ads. Parent-owned accounts; the Money Bank teaches saving, not spending.</p>
+  </div>
+  <div class="q-card">
+    <h3>{{ icon('grad', 'ic gold') }} Built for ages 6–18</h3>
+    <p class="section-sub">Four age brackets (6–8, 9–12, 13–15, 16–18) adjust the language, the lessons, and the rewards. Younger kids collect and spot; teens work with real market prices, headlines, and simulated storms.</p>
+  </div>
+  <div class="q-card">
+    <h3>{{ icon('chart', 'ic gold') }} Proof of learning</h3>
+    <p class="section-sub">Every quest ends with a checklist of what was learned, XP, and badges you can review together. Ask your kid to explain the Correction Gauntlet at dinner — if they can teach it, they learned it.</p>
+  </div>
+</div>
+
+<div class="center mt">
+  <a class="btn-gold" href="{{ url_for('index') }}">Back to the start</a>
+</div>
+{% endblock %}

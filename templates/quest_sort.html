@@ -1,0 +1,52 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Needs vs. Wants{% endblock %}
+{% block content %}
+<div class="game-shell">
+  <h2 class="q-sec-title">Quest <span class="gold">Mart</span></h2>
+  <p class="q-sec-sub">Sort each item into <strong>NEEDS</strong> or <strong>WANTS</strong>. Get 5 of 6 right! <span class="pretend-tag">pretend money</span></p>
+
+  <img src="{{ url_for('static', filename='img/v2/quest-mart.webp') }}" alt="Quest Mart" style="width:100%;max-width:560px;border-radius:20px;border:2px solid #2b4486;margin-bottom:16px">
+
+  <div id="sortBox" style="max-width:480px;margin:0 auto"></div>
+
+  <div id="sortResult" style="display:none">
+    <div class="q-card gold-edge">
+      <h3 class="center" id="sortHeadline"></h3>
+      <div class="big-rewards">
+        <div class="big-reward"><b id="sortCoins">0</b>Stock Coins earned</div>
+      </div>
+      <div class="center btn-row" style="justify-content:center">
+        <button class="btn-ghost" id="sortRetry">Play again</button>
+        <a class="btn-gold" id="sortNext" href="{{ url_for('quest_complete_page', qid='q2') }}" style="display:none">Claim my reward</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const ITEMS = {{ items | tojson }};
+function runSort() {
+  document.getElementById("sortResult").style.display = "none";
+  initSortGame("sortBox", ITEMS, async ({ correct, total }) => {
+    try {
+      const res = await api("/api/game/sort", { correct, total });
+      document.getElementById("sortHeadline").textContent =
+        res.passed
+          ? "You sorted " + correct + " of " + total + " — smart shopper!"
+          : "You got " + correct + " of " + total + " — need 5 to pass. Try again!";
+      document.getElementById("sortCoins").textContent = res.coins_earned;
+      if (res.passed) document.getElementById("sortNext").style.display = "inline-block";
+    } catch (e) {
+      document.getElementById("sortHeadline").textContent = e.message;
+      document.getElementById("sortCoins").textContent = 0;
+    }
+    document.getElementById("sortResult").style.display = "block";
+    window.scrollTo(0, 0);
+  });
+}
+document.getElementById("sortRetry").addEventListener("click", runSort);
+runSort();
+</script>
+{% endblock %}

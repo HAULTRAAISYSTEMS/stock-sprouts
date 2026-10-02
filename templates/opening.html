@@ -1,0 +1,30 @@
+{% extends "base_v2.html" %}
+{% block title %}Start Your Journey{% endblock %}
+{% block content %}
+<div class="hero">
+  <h1 class="sr-only">STOCK QUEST</h1>
+  <img class="hero-logo-img" src="{{ url_for('static', filename='img/v2/hero-logo.webp') }}" alt="Stock Quest logo with Benny Bull and Barry Bear">
+  <div class="hero-tag">PLAY &nbsp;•&nbsp; LEARN &nbsp;•&nbsp; INVEST &nbsp;•&nbsp; BUILD</div>
+  <p class="q-sec-sub">Spot the brands you love. Own a slice. Learn how money really works — the fun way. <span class="pretend-tag">pretend money</span></p>
+
+  <div class="mascot-row">
+    <div class="mascot">
+      <img src="{{ url_for('static', filename='img/v2/mascot-benny-bull.webp') }}" alt="Benny Bull">
+      <div><b>Benny Bull</b><small>Your quest guide —<br>he'll show you how money works.</small></div>
+    </div>
+    <div class="mascot">
+      <img src="{{ url_for('static', filename='img/v2/mascot-barry-bear.webp') }}" alt="Barry Bear">
+      <div><b>Barry Bear</b><small>Your money coach —<br>building smart habits together.</small></div>
+    </div>
+  </div>
+
+  <a class="btn-gold big" href="{{ url_for('start') }}">START YOUR JOURNEY</a>
+  <p class="mt"><a href="#parents-note" class="btn-ghost">Parents &amp; Educators</a></p>
+</div>
+
+<div class="q-card mt" id="parents-note">
+  <h3>For parents &amp; educators</h3>
+  <p class="section-sub">Stock Quest teaches real money ideas — earning, saving, needs vs. wants, owning slices of companies, and surviving market storms — through short quests and games. Every dollar in the game is <strong>pretend money</strong>: no real trading, no real accounts, no chat with strangers, no ads.</p>
+  <p class="section-sub">Kids 6–18 play in age-matched brackets, earn Stock Coins and XP, and unlock new districts as they learn. <a href="{{ url_for('parents') }}">Read the full safety note</a>.</p>
+</div>
+{% endblock %}

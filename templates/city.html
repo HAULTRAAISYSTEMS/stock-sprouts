@@ -1,0 +1,59 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}Fortune City{% endblock %}
+{% block content %}
+<img class="city-banner mt" src="{{ url_for('static', filename='img/v2/city-panorama.webp') }}" alt="Fortune City at night">
+
+<div class="player-strip">
+  {{ avatar(v2.avatar, "md") }}
+  <div class="who">
+    <b>{{ profile['name'] }}</b>
+    <small>{{ v2.bracket.name if v2.bracket else v2.profile['track'] }} · Level {{ v2.level.n }} {{ v2.level.name }}</small>
+    <small>{{ v2.xp }} XP{% if v2.next_level %} · {{ v2.next_level.xp - v2.xp }} XP to {{ v2.next_level.name }}{% else %} · max level!{% endif %}</small>
+  </div>
+  <div>
+    <span class="stat-pill gold">{{ icon('coins', 'ic') }} {{ v2.coins|int }}</span>
+  </div>
+</div>
+
+<h2 class="q-sec-title">Fortune <span class="gold">City</span></h2>
+<p class="q-sec-sub">Pick a district. Every quest teaches you something real about money.</p>
+
+<div class="district-grid">
+  {% for d in districts %}
+  {% if d.state == "soon" %}
+  <div class="district soon">
+    <img src="{{ url_for('static', filename='img/v2/' + d.art) }}" alt="{{ d.name }}">
+    <div class="d-body">
+      <div><b>{{ d.name }}</b><small>{{ d.sub }}</small></div>
+      <span class="d-state badge-state soon">SOON</span>
+    </div>
+  </div>
+  {% else %}
+  <a class="district {{ 'locked' if d.state == 'locked' }}" href="{{ d.href }}">
+    <img src="{{ url_for('static', filename='img/v2/' + d.art) }}" alt="{{ d.name }}">
+    <div class="d-body">
+      <div><b>{{ d.name }}</b><small>{{ d.sub }}</small></div>
+      <span class="d-state badge-state {{ d.state }}">{{ "DONE" if d.state == "done" else ("LOCKED" if d.state == "locked" else "OPEN") }}</span>
+    </div>
+  </a>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div class="q-card mt">
+  <h3>{{ icon('trophy', 'ic gold') }} Your quests</h3>
+  <table class="q-table">
+    {% for item in quests %}
+    <tr>
+      <td>{{ icon('check' if item.done else 'pin', 'ic') }}</td>
+      <td><strong>{{ item.q.title }}</strong><br><small class="section-sub">{{ item.q.district }}</small></td>
+      <td style="text-align:right">
+        {% if item.done %}<span class="badge-state done">DONE</span>
+        {% else %}<a class="btn-ghost" style="padding:8px 18px" href="{{ url_for('quest_intro', qid=item.q.id) }}">Play</a>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

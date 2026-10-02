@@ -1,0 +1,49 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ q.title }}{% endblock %}
+{% block content %}
+<div class="center mt">
+  <span class="pretend-tag">{{ q.district }}</span>
+</div>
+<h2 class="q-sec-title">{{ q.title }}</h2>
+<p class="q-sec-sub">{{ q.tagline }}</p>
+
+<div class="dialogue">
+  {% for who, line in q.dialogue %}
+  <div class="bubble-row">
+    <img src="{{ url_for('static', filename='img/v2/' + mascots[who].art) }}" alt="{{ mascots[who].name }}">
+    <div class="bubble"><b>{{ mascots[who].name }}:</b> {{ line }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="q-card gold-edge">
+  <h3>{{ icon('pin', 'ic gold') }} Your mission</h3>
+  <ul class="mission-list">
+    {% for st in steps %}
+    <li>
+      {% if st.done %}
+      <div class="mission done">{{ icon('check', 'ic') }}<div><strong>{{ st.s.label }}</strong><small>{{ st.s.done_label }} — complete!</small></div></div>
+      {% else %}
+      <a href="{{ st.s.href }}"><div class="mission">{{ icon('play', 'ic') }}<div><strong>{{ st.s.label }}</strong><small>Tap to play</small></div></div></a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="reward-line">
+    <span class="stat-pill gold">{{ icon('coins', 'ic') }} +{{ q.coins }} Stock Coins</span>
+    <span class="stat-pill gold">{{ icon('bolt', 'ic') }} +{{ q.xp }} XP</span>
+    {% for u in q.unlocks %}<span class="stat-pill">{{ icon('lock', 'ic') }} Unlocks: {{ u.replace('-', ' ').title() }}</span>{% endfor %}
+  </div>
+  <div class="center mt">
+    {% if done %}
+      <span class="badge-state done">QUEST COMPLETE</span>
+      <p class="mt"><a class="btn-ghost" href="{{ url_for('city') }}">Back to Fortune City</a></p>
+    {% else %}
+      <a class="btn-gold big" href="{{ steps[0].s.href if not steps[0].done else (steps[1].s.href if steps|length > 1 and not steps[1].done else url_for('quest_complete_page', qid=q.id)) }}">
+        {{ "CONTINUE QUEST" if (steps[0].done or (steps|length > 1 and steps[1].done)) else "START QUEST" }}
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

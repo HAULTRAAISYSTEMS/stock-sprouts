@@ -1,0 +1,63 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Coin Catch{% endblock %}
+{% block content %}
+<div class="game-shell">
+  <h2 class="q-sec-title">Coin <span class="gold">Catch</span></h2>
+  <p class="game-tip">Tap the falling coins to catch them — <strong>don't tap the money pits!</strong> <span class="pretend-tag">pretend money</span></p>
+
+  <div class="game-hud">
+    <span class="stat-pill"><span id="catchTime">30s</span></span>
+    <span class="stat-pill gold">{{ icon('star', 'ic') }} Score: <span id="catchScore">0</span></span>
+    <span class="stat-pill">Lv 1</span>
+  </div>
+
+  <div id="gameArea">
+    <canvas id="catchCanvas"></canvas>
+    <p class="game-tip mt" id="catchHint">Get ready… catch as many coins as you can in 30 seconds!</p>
+  </div>
+
+  <div id="catchResult" style="display:none">
+    <div class="q-card gold-edge">
+      <h3>Time's up!</h3>
+      <div class="big-rewards">
+        <div class="big-reward"><b id="finalScore">0</b>points</div>
+        <div class="big-reward"><b id="finalCoins">0</b>Stock Coins earned</div>
+      </div>
+      <p class="game-tip" id="catchBadge"></p>
+      <div class="btn-row center" style="justify-content:center">
+        <button class="btn-ghost" id="catchRetry">Play again</button>
+        <a class="btn-gold" href="{{ url_for('quest_quiz') }}">Next: the quiz</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function runCatch() {
+  document.getElementById("gameArea").style.display = "block";
+  document.getElementById("catchResult").style.display = "none";
+  document.getElementById("catchHint").textContent = "Go! Tap the coins!";
+  initCoinCatch("catchCanvas", async ({ score, caught }) => {
+    document.getElementById("gameArea").style.display = "none";
+    try {
+      const res = await api("/api/game/catch", { score, caught });
+      document.getElementById("finalScore").textContent = score;
+      document.getElementById("finalCoins").textContent = res.coins_earned;
+      document.getElementById("catchBadge").textContent = res.badge
+        ? "Coin Catcher badge earned — 20+ coins caught!"
+        : "Caught " + caught + " coins. Catch 20 for the Coin Catcher badge!";
+    } catch (e) {
+      document.getElementById("finalScore").textContent = score;
+      document.getElementById("finalCoins").textContent = 0;
+      document.getElementById("catchBadge").textContent = e.message;
+    }
+    document.getElementById("catchResult").style.display = "block";
+    window.scrollTo(0, 0);
+  });
+}
+document.getElementById("catchRetry").addEventListener("click", runCatch);
+runCatch();
+</script>
+{% endblock %}

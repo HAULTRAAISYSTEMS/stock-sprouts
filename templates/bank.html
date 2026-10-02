@@ -1,0 +1,69 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Money Bank{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">Money <span class="gold">Bank</span></h2>
+<p class="q-sec-sub">Save your Stock Coins and watch them grow over time! <span class="pretend-tag">pretend money</span></p>
+
+<img src="{{ url_for('static', filename='img/v2/money-bank.webp') }}" alt="Money Bank" style="width:100%;max-width:560px;border-radius:20px;border:2px solid #2b4486;display:block;margin:0 auto 16px">
+
+<div class="q-card gold-edge">
+  <div class="plant-stage" id="plantStage"></div>
+  <div class="bank-balance"><span id="bankBal">{{ v2.bank_balance|int }}</span></div>
+  <p class="center section-sub" style="margin-top:0">Stock Coins saved</p>
+
+  <div class="deposit-row">
+    <input type="number" id="depAmt" min="1" placeholder="Coins" inputmode="numeric">
+    <button class="btn-gold" id="depBtn">DEPOSIT COINS</button>
+  </div>
+  <p class="center section-sub">Your wallet: <strong style="color:var(--gold-l)"><span id="walletCoins">{{ v2.coins|int }}</span> Stock Coins</strong></p>
+
+  <div class="notice">
+    <strong>Why save?</strong> Money you don't spend today can grow into bigger money later.
+    Every coin you park here is a coin working for future-you.
+  </div>
+
+  <div class="center mt">
+    <a class="btn-ghost" href="{{ url_for('city') }}">Back to Fortune City</a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Growth plant: 5 stages drawn with SVG, stage from bank balance tiers.
+function plantSVG(stage) {
+  const leaves = ["", "M50 78 Q50 60 50 46", "M50 78 Q50 55 50 40 M50 62 Q36 58 30 48 M50 62 Q64 58 70 48",
+    "M50 80 Q50 50 50 32 M50 60 Q34 56 26 44 M50 60 Q66 56 74 44 M50 46 Q42 40 38 32 M50 46 Q58 40 62 32",
+    "M50 82 Q50 46 50 26 M50 62 Q32 58 22 44 M50 62 Q68 58 78 44 M50 46 Q40 40 34 30 M50 46 Q60 40 66 30 M50 34 Q44 28 42 20 M50 34 Q56 28 58 20"][stage] || "";
+  const coins = stage >= 4
+    ? '<circle cx="30" cy="34" r="7" fill="#ffc93c" stroke="#a86e00" stroke-width="2"/><circle cx="70" cy="28" r="7" fill="#ffc93c" stroke="#a86e00" stroke-width="2"/><circle cx="58" cy="16" r="6" fill="#ffe08a" stroke="#a86e00" stroke-width="2"/>'
+    : stage >= 3 ? '<circle cx="34" cy="36" r="6" fill="#ffc93c" stroke="#a86e00" stroke-width="2"/><circle cx="66" cy="32" r="6" fill="#ffc93c" stroke="#a86e00" stroke-width="2"/>' : "";
+  return '<svg width="120" height="110" viewBox="0 0 100 110">' +
+    '<ellipse cx="50" cy="98" rx="30" ry="8" fill="#0a1430"/>' +
+    '<path d="M42 98 L46 78 L54 78 L58 98 Z" fill="#8a5b3c"/>' +
+    (stage > 0 ? '<path d="' + leaves + '" stroke="#4ade80" stroke-width="5" fill="none" stroke-linecap="round"/>' : "") +
+    coins +
+    (stage === 0 ? '<text x="50" y="60" text-anchor="middle" fill="#b9c2e2" font-size="13" font-family="Baloo 2">plant me!</text>' : "") +
+    "</svg>";
+}
+function paintPlant() {
+  const bal = Number(document.getElementById("bankBal").textContent) || 0;
+  const stage = bal >= 500 ? 4 : bal >= 300 ? 3 : bal >= 150 ? 2 : bal >= 50 ? 1 : 0;
+  document.getElementById("plantStage").innerHTML = plantSVG(stage);
+}
+paintPlant();
+
+document.getElementById("depBtn").addEventListener("click", async () => {
+  const amt = Number(document.getElementById("depAmt").value);
+  if (!amt || amt <= 0) { toast("Enter how many coins to deposit."); return; }
+  try {
+    const res = await api("/api/bank/deposit", { amount: Math.floor(amt) });
+    document.getElementById("bankBal").textContent = Math.floor(res.bank_balance);
+    document.getElementById("walletCoins").textContent = Math.floor(res.coins);
+    document.getElementById("depAmt").value = "";
+    paintPlant();
+    toast("Deposited " + res.deposited + " coins. Super Saver badge earned — watch it grow!");
+  } catch (e) { toast(e.message); }
+});
+</script>
+{% endblock %}

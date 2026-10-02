@@ -1,0 +1,122 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}Create Your Avatar{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">Create Your <span class="gold">Avatar</span></h2>
+<p class="q-sec-sub">Make a character that looks like YOU! You can change it any time.</p>
+
+<div class="q-card gold-edge">
+  <div class="avatar-stage">
+    <span id="avatarPreview"></span>
+  </div>
+
+  <h3 class="center">Pick your look</h3>
+  <div class="opt-row" id="portraitRow">
+    {% for p in portraits %}
+    <button type="button" class="opt" data-val="{{ p }}">
+      <img src="{{ url_for('static', filename='img/v2/' + p + '.webp') }}" alt="look {{ loop.index }}">
+    </button>
+    {% endfor %}
+  </div>
+
+  <h3 class="center">Add an accessory</h3>
+  <div class="opt-row" id="accRow">
+    {% for a in accessories %}
+    <button type="button" class="opt" data-val="{{ a }}">
+      {% if a == "none" %}<span style="padding:10px 14px">None</span>{% else %}{{ icon(a, "ic") }}{% endif %}
+    </button>
+    {% endfor %}
+  </div>
+
+  <h3 class="center">Frame color</h3>
+  <div class="opt-row" id="frameRow">
+    {% for f in frames %}
+    <button type="button" class="opt" data-val="{{ f }}"><span class="swatch {{ f }}"></span></button>
+    {% endfor %}
+  </div>
+
+  <h3 class="center">Show what makes you, you</h3>
+  <p class="center section-sub" style="margin-top:-6px">Pick any — glasses, hearing aids, wheels and more belong in Fortune City.</p>
+  <div class="opt-row" id="a11yRow">
+    {% for a in a11y_opts %}
+    <button type="button" class="opt" data-val="{{ a }}">
+      {% if a == "glasses" %}{{ icon('glasses', 'ic') }}
+      {% elif a == "hearing-aid" %}{{ icon('hearing', 'ic') }}
+      {% elif a == "wheelchair" %}{{ icon('wheelchair', 'ic') }}
+      {% endif %}
+      <span>{{ a.replace("-", " ").title() }}</span>
+    </button>
+    {% endfor %}
+  </div>
+
+  <div class="center mt">
+    <button class="btn-gold big" id="confirmAvatar">CONFIRM AVATAR</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const av = {
+  portrait: {{ v2.avatar.portrait | tojson }},
+  accessory: {{ v2.avatar.accessory | tojson }},
+  frame: {{ v2.avatar.frame | tojson }},
+  a11y: {{ v2.avatar.get("a11y", []) | tojson }}
+};
+const ACC_SVG = {
+  star: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 6.2 6.8.8-5 4.6 1.3 6.7-6-3.3-6 3.3 1.3-6.7-5-4.6 6.8-.8z"/></svg>',
+  crown: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l4 3.5L12 5.5l5 6.5 4-3.5-1.6 9H4.6z"/></svg>',
+  bolt: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4.5 13.5H11l-1 8.5L18.5 10H12z"/></svg>',
+  heart: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5S3.5 15 3.5 9.5A4.5 4.5 0 0 1 8 5c1.8 0 3.2 1 4 2.3C12.8 6 14.2 5 16 5a4.5 4.5 0 0 1 4.5 4.5c0 5.5-8.5 11-8.5 11z"/></svg>'
+};
+const A11Y_SVG = {
+  glasses: '<span class="a11y a11y-glasses"><svg viewBox="0 0 100 100"><g fill="rgba(20,30,60,0.22)" stroke="#141c38" stroke-width="3.5"><rect x="13" y="37" width="31" height="23" rx="10"/><rect x="56" y="37" width="31" height="23" rx="10"/><path d="M44 45 Q50 41 56 45" fill="none"/><path d="M13 43 L5 39 M87 43 L95 39" fill="none"/></g></svg></span>',
+  "hearing-aid": '<span class="a11y a11y-hearing"><svg viewBox="0 0 100 100"><rect x="74" y="42" width="11" height="17" rx="5.5" fill="#e8b04b" stroke="#8a5b00" stroke-width="2.5"/><path d="M79.5 42 q0 -9 9 -9" stroke="#8a5b00" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="79.5" cy="53" r="2.2" fill="#8a5b00"/></svg></span>',
+  wheelchair: '<span class="a11y a11y-chair"><svg viewBox="0 0 100 100"><circle cx="50" cy="55" r="36" fill="#132a5c" stroke="#ffc93c" stroke-width="4"/><g stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round"><circle cx="38" cy="64" r="15"/><circle cx="68" cy="74" r="6.5"/><path d="M38 64 H58"/><path d="M46 64 V42"/><path d="M46 42 H60"/><path d="M54 40 V56 H68"/></g><circle cx="58" cy="30" r="7" fill="#ffffff"/></svg></span>'
+};
+function paintPreview() {
+  const el = document.getElementById("avatarPreview");
+  const acc = av.accessory !== "none"
+    ? '<span class="avatar-acc">' + (ACC_SVG[av.accessory] || "") + "</span>" : "";
+  const a11y = (av.a11y || []).map(a => A11Y_SVG[a] || "").join("");
+  el.innerHTML =
+    '<span class="avatar avatar-lg frame-' + av.frame + '">' +
+    '<img src="/static/img/v2/' + av.portrait + '.webp" alt="avatar preview">' + acc + a11y + "</span>";
+}
+function wireRow(rowId, key) {
+  const row = document.getElementById(rowId);
+  const paint = () => row.querySelectorAll(".opt").forEach(o =>
+    o.classList.toggle("sel", o.dataset.val === av[key]));
+  row.querySelectorAll(".opt").forEach(o =>
+    o.addEventListener("click", () => { av[key] = o.dataset.val; paint(); paintPreview(); }));
+  paint();
+}
+wireRow("portraitRow", "portrait");
+wireRow("accRow", "accessory");
+wireRow("frameRow", "frame");
+
+// accessibility options are multi-select toggles
+(function wireA11y() {
+  const row = document.getElementById("a11yRow");
+  if (!Array.isArray(av.a11y)) av.a11y = [];
+  const paint = () => row.querySelectorAll(".opt").forEach(o =>
+    o.classList.toggle("sel", av.a11y.includes(o.dataset.val)));
+  row.querySelectorAll(".opt").forEach(o =>
+    o.addEventListener("click", () => {
+      const v = o.dataset.val;
+      av.a11y = av.a11y.includes(v)
+        ? av.a11y.filter(x => x !== v)
+        : av.a11y.concat([v]);
+      paint(); paintPreview();
+    }));
+  paint();
+})();
+paintPreview();
+
+document.getElementById("confirmAvatar").addEventListener("click", async () => {
+  try {
+    await api("/api/avatar/save", av);
+    window.location.href = {{ url_for('city') | tojson }};
+  } catch (e) { toast(e.message); }
+});
+</script>
+{% endblock %}

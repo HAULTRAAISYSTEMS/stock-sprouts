@@ -1,0 +1,47 @@
+{% extends "base_v2.html" %}
+{% block title %}Choose Your Age Group{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">Choose Your <span class="gold">Age Group</span></h2>
+<p class="q-sec-sub">The game adjusts to your age, so you get the right challenges, lessons, and rewards.</p>
+
+<form method="post" action="{{ url_for('profile') }}" id="ageForm">
+  <div class="name-field">
+    <input type="text" name="name" maxlength="24" placeholder="Your first name" autocomplete="off" required>
+  </div>
+  <div class="age-grid" id="ageGrid">
+    {% for b in brackets %}
+    <button type="button" class="age-card" data-bracket="{{ b.id }}">
+      <img src="{{ url_for('static', filename='img/v2/' + b.art) }}" alt="{{ b.name }}">
+      <div>
+        <div class="age-label">{{ b.label }}</div>
+        <div class="age-name">{{ b.name }}</div>
+        <div class="age-blurb">{{ b.blurb }}</div>
+      </div>
+    </button>
+    {% endfor %}
+  </div>
+  <input type="hidden" name="bracket" id="bracketInput" value="">
+  <div class="center mt">
+    <button class="btn-gold big" type="submit" id="ageGo" disabled>Pick an age group first</button>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const grid = document.getElementById("ageGrid");
+const input = document.getElementById("bracketInput");
+const go = document.getElementById("ageGo");
+grid.querySelectorAll(".age-card").forEach(card => {
+  card.addEventListener("click", () => {
+    grid.querySelectorAll(".age-card").forEach(c => c.classList.remove("sel"));
+    card.classList.add("sel");
+    input.value = card.dataset.bracket;
+    go.disabled = false;
+    go.textContent = "Continue as " + card.querySelector(".age-name").textContent;
+  });
+});
+document.getElementById("ageForm").addEventListener("submit", e => {
+  if (!input.value) { e.preventDefault(); toast("Pick your age group first!"); }
+});
+</script>
+{% endblock %}

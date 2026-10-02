@@ -1,0 +1,63 @@
+{% extends "base_v2.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<h2 class="q-sec-title">Player <span class="gold">Profile</span></h2>
+
+<div class="q-card gold-edge">
+  <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap">
+    {{ avatar(v2.avatar, "lg") }}
+    <div style="flex:1; min-width:200px">
+      <h3 style="margin:0; font-size:26px">{{ profile['name'] }}</h3>
+      <p class="section-sub" style="margin:4px 0">
+        {% if v2.bracket %}Age {{ v2.bracket.label }} · {{ v2.bracket.name }}{% else %}{{ v2.profile['track']|title }} track{% endif %}
+      </p>
+      <p class="section-sub" style="margin:4px 0">"Learning today, investing tomorrow."</p>
+      <a class="btn-ghost" style="padding:8px 18px; font-size:14px" href="{{ url_for('avatar_creator') }}">Change avatar</a>
+    </div>
+    <div style="text-align:center">
+      <span class="stat-pill gold">{{ icon('coins', 'ic') }} {{ v2.coins|int }}</span>
+      <div class="mt"><span class="stat-pill">{{ icon('bolt', 'ic') }} {{ v2.xp }} XP</span></div>
+    </div>
+  </div>
+
+  <h3 class="mt">{{ icon('trophy', 'ic gold') }} Level {{ v2.level.n }} · {{ v2.level.name }}</h3>
+  {% if v2.next_level %}
+  <div class="xp-track"><div class="xp-fill" style="width:{{ ((v2.xp - v2.level.xp) / (v2.next_level.xp - v2.level.xp) * 100)|round(1) }}%"></div></div>
+  <p class="section-sub">{{ v2.xp }} / {{ v2.next_level.xp }} XP — {{ v2.next_level.xp - v2.xp }} XP to {{ v2.next_level.name }}</p>
+  {% else %}
+  <div class="xp-track"><div class="xp-fill" style="width:100%"></div></div>
+  <p class="section-sub">Max level reached — true Mogul status!</p>
+  {% endif %}
+</div>
+
+<div class="q-grid two mt">
+  <div class="q-card">
+    <h3>{{ icon('chart', 'ic gold') }} My progress</h3>
+    <table class="q-table">
+      <tr><td>Quests completed</td><td style="text-align:right"><strong>{{ quests_done }} / {{ quest_total }}</strong></td></tr>
+      <tr><td>Stock Coins</td><td style="text-align:right"><strong>{{ v2.coins|int }}</strong></td></tr>
+      <tr><td>XP</td><td style="text-align:right"><strong>{{ v2.xp }}</strong></td></tr>
+      <tr><td>Money Bank saved</td><td style="text-align:right"><strong>{{ v2.bank_balance|int }} coins</strong></td></tr>
+    </table>
+  </div>
+  <div class="q-card">
+    <h3>{{ icon('star', 'ic gold') }} My badges</h3>
+    <div class="badge-grid">
+      {% for item in badges %}
+      <div class="badge-cell {{ '' if item.earned else 'locked' }}" title="{{ item.b.desc }}">
+        {{ icon(item.b.icon if item.earned else 'lock', 'ic lg') }}
+        <b>{{ item.b.name }}</b>
+        <small>{{ "Earned!" if item.earned else item.b.desc }}</small>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="center mt btn-row" style="justify-content:center">
+  <a class="btn-ghost" href="{{ url_for('profile') }}">{{ icon('gear', 'ic') }} Switch player</a>
+  <a class="btn-ghost" href="{{ url_for('parents') }}">Parents</a>
+  <a class="btn-ghost" href="{{ url_for('signout') }}">{{ icon('logout', 'ic') }} Sign out</a>
+</div>
+{% endblock %}
