@@ -45,8 +45,8 @@ def _make_profile(client, name="TestKid", track="sprouts"):
 def test_landing_loads(client):
     res = client.get("/")
     assert res.status_code == 200
-    assert b"Spot It. Own It." in res.data
-    assert b"Sprouts" in res.data and b"Traders" in res.data
+    assert b"STOCK QUEST" in res.data
+    assert b"START YOUR JOURNEY" in res.data
 
 
 def test_api_prices_returns_12_tickers(client):
@@ -161,3 +161,219 @@ def test_history_endpoint(client):
     body = res.get_json()
     assert body["ok"] is True
     assert len(body["points"]) == 7
+
+
+# ----------------------------------------------------------------------------
+# Stock Quest v2: brackets, avatars, quests, bank
+# ----------------------------------------------------------------------------
+
+def _make_v2_profile(client, name="QuestKid", bracket="junior"):
+    res = client.post("/profile", data={"name": name, "bracket": bracket},
+                      follow_redirects=False)
+    assert res.status_code == 302
+    assert res.headers["Location"].endswith("/avatar")
+    return res
+
+
+def _profile_row(name):
+    import sqlite3
+    db = sqlite3.connect(app_module.db_path())
+    db.row_factory = sqlite3.Row
+    row = db.execute("SELECT * FROM profiles WHERE name = ?", (name,)).fetchone()
+    db.close()
+    return row
+
+
+def test_age_bracket_stored_and_track_mapped(client):
+    _make_v2_profile(client, name="BracketKid", bracket="master")
+    row = _profile_row("BracketKid")
+    assert row["bracket"] == "master"
+    assert row["track"] == "traders"  # 13–15 maps to the traders track
+
+    _make_v2_profile(client, name="BracketKid2", bracket="explorer")
+    row = _profile_row("BracketKid2")
+    assert row["bracket"] == "explorer"
+    assert row["track"] == "sprouts"
+
+    # v2 pages render for the new profile
+    res = client.get("/city")
+    assert res.status_code == 200
+    assert b"Fortune" in res.data
+
+
+def test_avatar_save_roundtrip(client):
+    _make_v2_profile(client, name="AvatarKid", bracket="junior")
+    res = client.post("/api/avatar/save", json={
+        "portrait": "age-13-15", "accessory": "crown", "frame": "teal",
+        "a11y": ["glasses", "wheelchair", "bogus"]})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["avatar"] == {"portrait": "age-13-15", "accessory": "crown",
+                              "frame": "teal",
+                              "a11y": ["glasses", "wheelchair"]}
+
+    row = _profile_row("AvatarKid")
+    import json as _json
+    saved = _json.loads(row["avatar"])
+    assert saved["accessory"] == "crown"
+    assert saved["a11y"] == ["glasses", "wheelchair"]
+
+    res = client.get("/me")
+    assert res.status_code == 200
+    assert b"age-13-15.webp" in res.data
+    assert b"a11y-glasses" in res.data
+    assert b"a11y-chair" in res.data
+
+    # invalid values fall back to safe defaults, never 500
+    res = client.post("/api/avatar/save", json={
+        "portrait": "nope", "accessory": "nope", "frame": "nope",
+        "a11y": "not-a-list"})
+    body = res.get_json()["avatar"]
+    assert body["portrait"] == "age-9-12"
+    assert body["a11y"] == []
+
+
+def test_coin_catch_submit_awards_coins_and_badge(client):
+    _make_v2_profile(client, name="CatchKid", bracket="explorer")
+    res = client.post("/api/game/catch", json={"score": 250, "caught": 22})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["coins_earned"] == 25  # score // 10
+    assert body["badge"] == "coin-catcher"
+
+    row = _profile_row("CatchKid")
+    assert row["coins"] == pytest.approx(25.0)
+
+    # quest pages render
+    assert client.get("/quest/q1/play").status_code == 200
+    assert client.get("/quest/q1/quiz").status_code == 200
+
+
+def test_quest1_completion_awards_and_unlocks_bank(client):
+    _make_v2_profile(client, name="Q1Kid", bracket="junior")
+
+    # step 1: coin catch
+    res = client.post("/api/game/catch", json={"score": 120, "caught": 12})
+    assert res.get_json()["ok"] is True  # 12 coins, no badge
+
+    # step 2: quiz — all three correct
+    res = client.post("/api/game/quiz", json={"answers": [0, 1, 0]})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["passed"] is True
+    assert body["correct"] == 3
+
+    # completing too early is blocked
+    _make_v2_profile(client, name="Q1Early", bracket="junior")
+    res = client.post("/api/quest/complete", json={"quest_id": "q1"})
+    assert res.status_code == 400
+
+    # now complete for real
+    _make_v2_profile(client, name="Q1Kid2", bracket="junior")
+    client.post("/api/game/catch", json={"score": 100, "caught": 10})
+    client.post("/api/game/quiz", json={"answers": [0, 1, 0]})
+    res = client.post("/api/quest/complete", json={"quest_id": "q1"})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["coins_earned"] == 100
+    assert body["xp_earned"] == 50
+    assert "money-bank" in body["unlocks"]
+    assert body["badge"] == "first-steps"
+    # 10 (catch) + 100 (quest) coins
+    assert body["coins"] == pytest.approx(110.0)
+
+    row = _profile_row("Q1Kid2")
+    assert row["xp"] == 50
+
+    # idempotent: no double rewards
+    res = client.post("/api/quest/complete", json={"quest_id": "q1"})
+    body = res.get_json()
+    assert body["already"] is True
+    row = _profile_row("Q1Kid2")
+    assert row["coins"] == pytest.approx(110.0)
+
+    # bank is now unlocked and accepts deposits
+    res = client.get("/bank")
+    assert res.status_code == 200
+    assert b"Money Bank" in res.data
+    res = client.post("/api/bank/deposit", json={"amount": 60})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["bank_balance"] == pytest.approx(60.0)
+    assert body["coins"] == pytest.approx(50.0)
+
+
+def test_bank_locked_before_quest1(client):
+    _make_v2_profile(client, name="LockedKid", bracket="junior")
+    res = client.get("/bank", follow_redirects=False)
+    assert res.status_code == 302  # bounced to Quest 1
+    res = client.post("/api/bank/deposit", json={"amount": 10})
+    assert res.status_code == 403
+
+
+def test_quest2_sort_flow(client):
+    _make_v2_profile(client, name="Q2Kid", bracket="explorer")
+    res = client.get("/quest/q2/play")
+    assert res.status_code == 200
+    assert b"Quest Mart" in res.data
+
+    # perfect sort
+    res = client.post("/api/game/sort", json={"correct": 6, "total": 6})
+    body = res.get_json()
+    assert body["passed"] is True
+    assert body["coins_earned"] == 30
+
+    res = client.post("/api/quest/complete", json={"quest_id": "q2"})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["badge"] == "smart-shopper"
+    assert body["xp_earned"] == 60
+
+    # failing sort does not set the step flag
+    _make_v2_profile(client, name="Q2Fail", bracket="explorer")
+    res = client.post("/api/game/sort", json={"correct": 3, "total": 6})
+    assert res.get_json()["passed"] is False
+    res = client.post("/api/quest/complete", json={"quest_id": "q2"})
+    assert res.status_code == 400
+
+
+def test_quest3_completes_when_holding_owned(client):
+    _make_v2_profile(client, name="Q3Kid", bracket="wealth")
+    # no holding yet -> blocked
+    res = client.post("/api/quest/complete", json={"quest_id": "q3"})
+    assert res.status_code == 400
+
+    client.post("/api/buy", json={"ticker": "AAPL", "amount": 100})
+    res = client.post("/api/quest/complete", json={"quest_id": "q3"})
+    body = res.get_json()
+    assert body["ok"] is True
+    assert body["badge"] == "shareholder"
+    assert body["coins_earned"] == 150
+
+
+def test_exchange_renders_for_v2_profile(client):
+    _make_v2_profile(client, name="ExKid", bracket="master")
+    res = client.get("/exchange")
+    assert res.status_code == 200
+    assert b"Correction Gauntlet" in res.data
+    res = client.get("/traders")
+    assert res.status_code == 200
+    assert b"Correction Gauntlet" in res.data
+
+
+def test_mascot_names_per_approved_direction(client):
+    _make_v2_profile(client, name="MascotKid", bracket="junior")
+    res = client.get("/quest/q1")
+    assert res.status_code == 200
+    assert b"Benny Bull" in res.data
+    assert b"mascot-benny-bull.webp" in res.data
+    res = client.get("/quest/q2")
+    assert res.status_code == 200
+    assert b"Barry Bear" in res.data
+    assert b"mascot-barry-bear.webp" in res.data
+    # opening screen introduces both mascots by name (logged-out view)
+    with client.session_transaction() as s:
+        s.clear()
+    res = client.get("/")
+    assert res.status_code == 200
+    assert b"Benny Bull" in res.data and b"Barry Bear" in res.data
