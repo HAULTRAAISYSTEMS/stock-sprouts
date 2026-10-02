@@ -1,11 +1,11 @@
 /* Stock Quest v2 — mini-games. No emojis; canvas-drawn art only. */
 
-/* ---------------- Bull Run (Quest 1) ----------------
-   Subway-Surfers-style 3-lane runner and the game's main earner. The kid
-   auto-runs through Fortune City: swipe / arrow keys / pad buttons to switch
-   lanes, jump the barriers and money pits, slide under toll gates, grab coins,
-   and snag brand tokens (3 of one brand = a real $5 stock slice!).
-   Calls onDone({score, caught, tokens}) when time runs out. */
+/* ---------------- Bull Run: Chase Mode (Quest 1) ----------------
+   Endless 3-lane runner. The kid (their chosen avatar) sprints down Bull
+   Street while Lou the Liability — a debt monster of swirling dollar bills —
+   chases from behind. Every hit lets Lou close the gap; brand tokens push
+   him back. Caught = game over.
+   Calls onDone({score, caught, tokens, distance, caught_by}) when caught. */
 function initCoinCatch(canvasId, onDone) {
   const cv = document.getElementById(canvasId);
   const ctx = cv.getContext("2d");
@@ -44,7 +44,12 @@ function initCoinCatch(canvasId, onDone) {
   const bgImg = new Image();
   let bgReady = false;
   bgImg.onload = () => { bgReady = true; };
-  bgImg.src = "/static/img/v2/bg-bullrun.webp";
+  bgImg.src = "/static/img/v2/bg-bullstreet.webp";
+  // ---- the runner's head: the kid's chosen avatar portrait ----
+  const avatarImg = new Image();
+  let avatarReady = false;
+  avatarImg.onload = () => { avatarReady = true; };
+  if (typeof window !== "undefined" && window.AVATAR_URL) avatarImg.src = window.AVATAR_URL;
 
   // ---- player state ----
   let lane = 0, lanePos = 0;          // lanePos eases toward lane
@@ -58,15 +63,21 @@ function initCoinCatch(canvasId, onDone) {
   };
   const sliding = () => slideT >= 0;
 
-  // ---- run state ----
+  // ---- chase state ----
   let score = 0, caught = 0, running = true;
+  let gap = 70;                       // Lou's distance: 100 = far, 0 = caught
+  const GAP_MAX = 100;
+  let distance = 0;                   // meters survived
+  let caughtSeq = -1;                 // timestamp the caught sequence started
+  let redFlash = 0;
+  let crashUntil = 0, crashNext = 0;  // market-crash event windows
+  let _doneFired = false;
   const tokens = {};                  // key -> count this run
   let hotBrand = null;                // streaks make 3-of-a-kind achievable
-  const DUR = 45000;
   const t0 = performance.now();
-  const tEnd = t0 + DUR;
-  let invulnUntil = 0, shake = 0, dist = 0, rowTimer = 0.4, tokenTimer = 6;
-  const ents = [];   // {lane, z, type: coin|pit|barrier|gate|token, y, key, done}
+  crashNext = t0 + 45000 + Math.random() * 15000;
+  let invulnUntil = 0, shake = 0, dist = 0, rowTimer = 0.4, tokenTimer = 6, hudTimer = 0;
+  const ents = [];   // {lane, z, type: coin|pit|barrier|gate|token, y, key, done, nearMissed}
   const pops = [];
   const parts = [];  // dust + sparkles: {x,y,vx,vy,life,max,color,size,grav}
   const stars = [];
@@ -74,10 +85,19 @@ function initCoinCatch(canvasId, onDone) {
     stars.push({ x: Math.random(), y: Math.random() * 0.26, r: Math.random() * 1.6 + 0.4, tw: Math.random() * 6.28 });
   }
 
-  const hudT = document.getElementById("catchTime");
   const hudS = document.getElementById("catchScore");
+  const hudDist = document.getElementById("catchDist");
+  const liabFill = document.getElementById("liabFill");
   const hudTok = document.getElementById("tokenHud");
-  const setScore = () => { if (hudS) hudS.textContent = score; };
+  const crashBanner = document.getElementById("crashBanner");
+  const setScore = () => { if (hudS) hudS.textContent = Math.floor(score); };
+  function setHud() {
+    if (hudDist) hudDist.textContent = Math.floor(distance) + "m";
+    if (liabFill) {
+      liabFill.style.width = Math.max(0, Math.min(100, gap)) + "%";
+      liabFill.classList.toggle("danger", gap < 32);
+    }
+  }
   function setTokenHud() {
     if (!hudTok) return;
     const keys = Object.keys(tokens);
@@ -112,11 +132,11 @@ function initCoinCatch(canvasId, onDone) {
     }
   }
 
-  // ---- input: swipe, keys, pad buttons ----
-  function goLeft() { if (running) lane = Math.max(-1, lane - 1); }
-  function goRight() { if (running) lane = Math.min(1, lane + 1); }
-  function goJump() { if (running && jumpT < 0) { jumpT = 0; slideT = -1; } }
-  function goSlide() { if (running && jumpT < 0) { slideT = 0; } }
+  // ---- input: swipe, keys, pad buttons (locked during the caught sequence) ----
+  function goLeft() { if (running && caughtSeq < 0) lane = Math.max(-1, lane - 1); }
+  function goRight() { if (running && caughtSeq < 0) lane = Math.min(1, lane + 1); }
+  function goJump() { if (running && caughtSeq < 0 && jumpT < 0) { jumpT = 0; slideT = -1; } }
+  function goSlide() { if (running && caughtSeq < 0 && jumpT < 0) { slideT = 0; } }
   const keyH = (e) => {
     if (!running) return;
     const k = e.key;
@@ -198,16 +218,55 @@ function initCoinCatch(canvasId, onDone) {
 
   function pop(x, y, txt, color) { pops.push({ x, y, txt, color, life: 1 }); }
 
+  // ---- chase: hits close the gap, tokens push Lou back ----
+  function checkCaught(now) {
+    if (gap <= 0 && caughtSeq < 0) startCaught(now);
+  }
+  function startCaught(now) {
+    caughtSeq = now;
+    shake = 26;
+    redFlash = 0.9;
+    if (crashBanner) crashBanner.style.display = "none";
+  }
   function stumble(x, y) {
     score = Math.max(0, score - 15);
+    gap = Math.max(0, gap - 22);          // Lou lunges closer
     invulnUntil = performance.now() + 1000;
     shake = 10;
-    pop(x, y - 46, "-15", "#f87171");
-    setScore();
+    pop(x, y - 46, "-15  Lou gains!", "#f87171");
+    setScore(); setHud();
+    checkCaught(performance.now());
+  }
+  function startCrash() {
+    crashUntil = performance.now() + 8000;
+    if (crashBanner) crashBanner.style.display = "block";
+    pop(W / 2, H * 0.35, "MARKET CRASH!", "#fbbf24");
+  }
+  function awardToken(key, ex, ey, es) {
+    const s = es || 1;
+    const x = ex === undefined ? xFor(lanePos, 1) : ex;
+    const y = ey === undefined ? yFor(1) : ey;
+    tokens[key] = (tokens[key] || 0) + 1;
+    score += 25;
+    gap = Math.min(GAP_MAX, gap + 18);    // assets push liabilities back
+    sparkleBurst(x, y - 40 * s, 10, ["#ffd76a", "#fff3c4", "#f59e0b", "#ffffff"]);
+    pop(x, y - 58, key === "FORTNITE" ? "BONUS!" : "+25 " + key, "#ffd76a");
+    setTokenHud(); setScore(); setHud();
   }
 
   function collide(e, now) {
-    if (Math.abs(lanePos - e.lane) >= 0.45) return;
+    const ld = Math.abs(lanePos - e.lane);
+    if (ld >= 0.45) {
+      // near-miss: threaded between Lou's traps — bonus, once per entity
+      if (ld < 0.7 && !e.nearMissed &&
+          (e.type === "pit" || e.type === "barrier" || e.type === "gate")) {
+        e.nearMissed = true;
+        score += 5;
+        pop(xFor(e.lane, e.z), yFor(e.z) - 64, "Close call! +5", "#38bdf8");
+        setScore();
+      }
+      return;
+    }
     const h = jumpH();
     const ex = xFor(e.lane, e.z), ey = yFor(e.z), es = sFor(e.z);
     if (e.type === "coin") {
@@ -221,15 +280,7 @@ function initCoinCatch(canvasId, onDone) {
       return;
     }
     if (e.type === "token") {
-      if (h < 0.55) {
-        e.done = true;
-        tokens[e.key] = (tokens[e.key] || 0) + 1;
-        score += 25;
-        sparkleBurst(ex, ey - 40 * es, 10, ["#ffd76a", "#fff3c4", "#f59e0b", "#ffffff"]);
-        pop(ex, ey - 58, e.key === "FORTNITE" ? "BONUS!" : "+25 " + e.key, "#ffd76a");
-        setTokenHud();
-        setScore();
-      }
+      if (h < 0.55) { e.done = true; awardToken(e.key, ex, ey, es); }
       return;
     }
     if (now < invulnUntil) return;
@@ -266,18 +317,15 @@ function initCoinCatch(canvasId, onDone) {
     const x = xFor(e.lane, e.z), y = yFor(e.z), s = sFor(e.z);
     const r = 30 * s;
     const yy = y - r - Math.sin(t * 0.004 + e.wob) * 6 * s;
-    // sparkle trail
     if (Math.random() < 0.55) {
       addPart(x + (Math.random() - 0.5) * 34 * s, yy + (Math.random() - 0.5) * 34 * s,
         -30, -55, 0.45, "#ffe08a", 2 + Math.random() * 2.5, 0);
     }
     ctx.save(); ctx.translate(x, yy);
-    // golden glow
     const g = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.8);
     g.addColorStop(0, "rgba(255,215,106,0.55)"); g.addColorStop(1, "rgba(255,215,106,0)");
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(0, 0, r * 1.8, 0, 7); ctx.fill();
-    // circle-clipped brand art
     ctx.save();
     ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.clip();
     const img = tokenImg[e.key];
@@ -287,7 +335,6 @@ function initCoinCatch(canvasId, onDone) {
       drawCoin(0, 0, s);
     }
     ctx.restore();
-    // spinning gold ring
     ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = Math.max(2, 5 * s);
     ctx.setLineDash([10 * s, 8 * s]);
     ctx.lineDashOffset = -t * 0.02;
@@ -372,13 +419,93 @@ function initCoinCatch(canvasId, onDone) {
     ctx.strokeStyle = "#16324f"; ctx.lineWidth = 11;
     ctx.beginPath(); ctx.moveTo(-18, -68); ctx.lineTo(-26 - sw * 0.7, -40); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(18, -68); ctx.lineTo(26 + sw * 0.7, -40); ctx.stroke();
-    // head + hair
-    ctx.fillStyle = "#f2c89b";
-    ctx.beginPath(); ctx.arc(0, -94, 17, 0, 7); ctx.fill();
-    ctx.fillStyle = "#3b2a20";
-    ctx.beginPath(); ctx.arc(0, -98, 17, Math.PI, 0); ctx.fill();
+    // head: the kid's own avatar portrait, circle-clipped (fallback: canvas head)
+    const hr = 19;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, -94, hr, 0, 7); ctx.clip();
+    if (avatarReady) {
+      ctx.drawImage(avatarImg, -hr, -94 - hr, hr * 2, hr * 2);
+    } else {
+      ctx.fillStyle = "#f2c89b";
+      ctx.fillRect(-hr, -94 - hr, hr * 2, hr * 2);
+      ctx.fillStyle = "#3b2a20";
+      ctx.fillRect(-hr, -94 - hr, hr * 2, hr * 0.55);
+    }
+    ctx.restore();
+    ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, -94, hr + 1.5, 0, 7); ctx.stroke();
     ctx.restore();
     ctx.globalAlpha = 1;
+  }
+  // ---- Lou the Liability: a debt monster of swirling dollar bills ----
+  function drawLou(t) {
+    const threat = 1 - gap / GAP_MAX;      // 0 = far, 1 = on top of you
+    let R = 46 + threat * 150;
+    let alpha = 0.35 + 0.65 * threat;
+    if (caughtSeq >= 0) {                   // the lunge: scale pop
+      const lunge = Math.min(1, (t - caughtSeq) / 500);
+      R *= 1 + 0.55 * lunge;
+      alpha = 1;
+    }
+    const cx = W / 2, cy = H + R * 0.25;    // looms from the bottom edge
+    const pulse = 1 + 0.05 * Math.sin(t * 0.006);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy);
+    ctx.scale(pulse, pulse);
+    // storm-cloud body: dark crimson blobs
+    ctx.fillStyle = "#5b1220";
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + t * 0.0009;
+      const br = R * (0.42 + 0.1 * Math.sin(t * 0.004 + i * 2.1));
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * R * 0.45, Math.sin(a) * R * 0.28 - R * 0.15, br, 0, 7);
+      ctx.fill();
+    }
+    // swirling dollar bills
+    for (let i = 0; i < 12; i++) {
+      const a = t * 0.0016 + (i / 12) * Math.PI * 2;
+      ctx.save();
+      ctx.translate(Math.cos(a) * R * 0.85, Math.sin(a * 1.3) * R * 0.5 - R * 0.1);
+      ctx.rotate(a * 2);
+      ctx.fillStyle = i % 3 ? "#3f6212" : "#4d7c0f";
+      ctx.fillRect(-13, -8, 26, 16);
+      ctx.strokeStyle = "#a3e635"; ctx.lineWidth = 2;
+      ctx.strokeRect(-13, -8, 26, 16);
+      ctx.fillStyle = "#d9f99d";
+      ctx.font = "800 11px 'Baloo 2', sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("$", 0, 1);
+      ctx.restore();
+    }
+    // clanking chain links
+    ctx.strokeStyle = "#9aa3b2"; ctx.lineWidth = 7; ctx.lineCap = "round";
+    for (let i = -2; i <= 2; i++) {
+      const sway = Math.sin(t * 0.003 + i) * 8;
+      ctx.beginPath();
+      ctx.moveTo(i * 34 + sway, -R * 0.1);
+      ctx.lineTo(i * 34 - sway, R * 0.35);
+      ctx.stroke();
+    }
+    // glowing yellow eyes
+    const ex = R * 0.3, ey = -R * 0.55;
+    [-1, 1].forEach((sd) => {
+      const g = ctx.createRadialGradient(sd * ex, ey, 2, sd * ex, ey, 26);
+      g.addColorStop(0, "#fef08a"); g.addColorStop(0.5, "#facc15");
+      g.addColorStop(1, "rgba(250,204,21,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(sd * ex, ey, 26, 0, 7); ctx.fill();
+      ctx.fillStyle = "#1c0a0a";
+      ctx.beginPath(); ctx.ellipse(sd * ex, ey, 7, 10, 0, 0, 7); ctx.fill();
+    });
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    // drifting bill motes in Lou's wake
+    if (Math.random() < 0.35 && caughtSeq < 0) {
+      addPart(cx + (Math.random() - 0.5) * R, H - 6,
+        (Math.random() - 0.5) * 30, -50 - Math.random() * 40,
+        0.9, "rgba(163,230,53,0.8)", 3, 0);
+    }
   }
   function drawBuildings(par, color, bh) {
     ctx.fillStyle = color;
@@ -395,7 +522,7 @@ function initCoinCatch(canvasId, onDone) {
     }
   }
   function drawPanLayer(par, yBase, hgt, tint) {
-    // scrolling slice of the night-city panorama; tiles horizontally
+    // scrolling slice of the Bull Street panorama; tiles horizontally
     const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
     if (!iw || !ih) return;
     const scale = hgt / ih;
@@ -420,7 +547,7 @@ function initCoinCatch(canvasId, onDone) {
     ctx.fillStyle = "#ffe08a";
     ctx.beginPath(); ctx.arc(W - 52, 54, 24, 0, 7); ctx.fill();
     if (bgReady) {
-      // two scrolling panorama layers: far (slow, darkened) + near (faster)
+      // Bull Street panorama: far (slow, darkened) + near (faster)
       drawPanLayer(0.15, horizonY, horizonY, "rgba(7,13,36,0.45)");
       drawPanLayer(0.35, horizonY + 30, horizonY * 1.12, null);
     } else {
@@ -445,48 +572,68 @@ function initCoinCatch(canvasId, onDone) {
     ctx.setLineDash([]); ctx.globalAlpha = 1;
   }
 
-  // ---- main loop ----
+  // ---- main loop: endless chase ----
   let raf, lastT = 0;
   function frame(now) {
     if (!running) return;
     const dt = Math.min(0.05, (now - lastT) / 1000 || 0.016);
     lastT = now;
     const elapsed = now - t0;
-    const remain = Math.max(0, Math.ceil((tEnd - now) / 1000));
-    if (hudT) hudT.textContent = remain + "s";
-    if (now >= tEnd) { finish(); return; }
 
-    const progress = elapsed / DUR;
-    const speed = 0.55 + 0.75 * progress;      // z-units per second; ramps up
-    dist += speed * dt;
+    // caught sequence: Lou lunges, world freezes for drama, then game over
+    if (caughtSeq >= 0) {
+      if (now - caughtSeq >= 1400) { finish(); return; }
+    } else {
+      // market crash event: Lou drains the gap 3x faster for 8s
+      if (now >= crashNext) {
+        startCrash();
+        crashNext = now + 45000 + Math.random() * 15000;
+      }
+      const crashing = now < crashUntil;
+      if (!crashing && crashBanner && crashBanner.style.display !== "none") {
+        crashBanner.style.display = "none";
+      }
+      // gap: clean running rebuilds it, crashes drain it, hits slam it
+      gap = crashing ? gap - 4.5 * dt : Math.min(GAP_MAX, gap + 1.5 * dt);
+      if (gap <= 0) { gap = 0; startCaught(now); }
 
-    if (jumpT >= 0) {
-      jumpT += dt;
-      if (jumpT >= JUMP_DUR) {                 // landing: dust + squash
-        jumpT = -1;
-        squashT = 0;
-        dustBurst(xFor(lanePos, 1), yFor(1));
+      const rf = Math.min(1, elapsed / 75000);          // difficulty ramp ~75s
+      const speedZ = 0.55 + 0.9 * rf;                    // z-units per second
+      const speedM = 9 + 15 * rf;                        // meters per second
+      const dD = speedM * dt;
+      distance += dD;
+      score += dD / 5;                                   // 1 pt per 5 meters
+      dist += speedZ * dt;
+
+      if (jumpT >= 0) {
+        jumpT += dt;
+        if (jumpT >= JUMP_DUR) {                         // landing: dust + squash
+          jumpT = -1;
+          squashT = 0;
+          dustBurst(xFor(lanePos, 1), yFor(1));
+        }
+      }
+      if (squashT >= 0) { squashT += dt; if (squashT >= SQUASH_DUR) squashT = -1; }
+      if (slideT >= 0) { slideT += dt; if (slideT >= SLIDE_DUR) slideT = -1; }
+      lanePos += (lane - lanePos) * Math.min(1, dt * 14);
+
+      rowTimer -= dt;
+      if (rowTimer <= 0) { spawnRow(); rowTimer = 1.25 - 0.55 * rf; }
+      tokenTimer -= dt;
+      if (tokenTimer <= 0) {
+        tokenTimer = 14 + Math.random() * 6;
+        if (!ents.some((e) => e.type === "token" && !e.done)) spawnToken();
+      }
+
+      for (let i = ents.length - 1; i >= 0; i--) {
+        const e = ents[i];
+        e.z += speedZ * dt;
+        if (e.z > 1.2) { ents.splice(i, 1); continue; }
+        if (!e.done && e.z >= 0.78 && e.z <= 1.05) collide(e, now);
       }
     }
-    if (squashT >= 0) { squashT += dt; if (squashT >= SQUASH_DUR) squashT = -1; }
-    if (slideT >= 0) { slideT += dt; if (slideT >= SLIDE_DUR) slideT = -1; }
-    lanePos += (lane - lanePos) * Math.min(1, dt * 14);
     if (shake > 0) shake = Math.max(0, shake - dt * 30);
-
-    rowTimer -= dt;
-    if (rowTimer <= 0) { spawnRow(); rowTimer = 1.25 - 0.55 * progress; }
-    tokenTimer -= dt;
-    if (tokenTimer <= 0) {
-      tokenTimer = 14 + Math.random() * 6;     // ~every 14-20s
-      if (!ents.some((e) => e.type === "token" && !e.done)) spawnToken();
-    }
-
-    for (let i = ents.length - 1; i >= 0; i--) {
-      const e = ents[i];
-      e.z += speed * dt;
-      if (e.z > 1.2) { ents.splice(i, 1); continue; }
-      if (!e.done && e.z >= 0.78 && e.z <= 1.05) collide(e, now);
-    }
+    if (redFlash > 0) redFlash = Math.max(0, redFlash - dt * 0.7);
     for (let i = parts.length - 1; i >= 0; i--) {
       const pt = parts[i];
       pt.life -= dt;
@@ -495,6 +642,8 @@ function initCoinCatch(canvasId, onDone) {
       pt.x += pt.vx * dt;
       pt.y += pt.vy * dt;
     }
+    hudTimer -= dt;
+    if (hudTimer <= 0) { setScore(); setHud(); hudTimer = 0.2; }
 
     ctx.save();
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
@@ -510,6 +659,7 @@ function initCoinCatch(canvasId, onDone) {
       else if (e.type === "barrier") drawBarrier(x, y, s);
       else if (e.type === "gate") drawGate(x, y, s);
     });
+    drawLou(now);          // behind the player, looming from the bottom edge
     drawPlayer(now);
     parts.forEach((pt) => {
       ctx.globalAlpha = Math.max(0, pt.life / pt.max);
@@ -528,6 +678,20 @@ function initCoinCatch(canvasId, onDone) {
       ctx.fillText(p.txt, p.x, p.y);
       ctx.globalAlpha = 1;
     }
+    // red vignette as Lou closes in
+    const threat = 1 - gap / GAP_MAX;
+    if (threat > 0.5 && caughtSeq < 0) {
+      const va = ((threat - 0.5) / 0.5) * (0.30 + 0.12 * Math.sin(now * 0.008));
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, H * 0.72);
+      vg.addColorStop(0, "rgba(190,20,40,0)");
+      vg.addColorStop(1, "rgba(190,20,40," + va.toFixed(3) + ")");
+      ctx.fillStyle = vg;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (redFlash > 0) {
+      ctx.fillStyle = "rgba(190,20,40," + (redFlash * 0.55).toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
     ctx.restore();
 
     raf = requestAnimationFrame(frame);
@@ -537,9 +701,31 @@ function initCoinCatch(canvasId, onDone) {
     running = false;
     cancelAnimationFrame(raf);
     window.removeEventListener("keydown", keyH);
-    onDone({ score, caught, tokens });
+    if (crashBanner) crashBanner.style.display = "none";
+    _doneFired = true;
+    onDone({ score: Math.round(score), caught, tokens,
+             distance: Math.round(distance), caught_by: "liabilities" });
   }
+
+  // test hook (only when the harness opts in)
+  if (typeof window !== "undefined" && window.__BULLRUN_TEST__) {
+    window.__BULLRUN_TEST__.api = {
+      gap: () => gap,
+      distance: () => distance,
+      score: () => score,
+      crashing: () => performance.now() < crashUntil,
+      hit: () => stumble(xFor(lanePos, 1), yFor(1)),
+      token: (key) => awardToken(key || "MCD"),
+      crash: () => startCrash(),
+      setGap: (v) => { gap = v; },
+      collideWith: (e) => collide(e, performance.now()),
+      lanePos: () => lanePos,
+      doneFired: () => _doneFired,
+    };
+  }
+
   setScore();
+  setHud();
   setTokenHud();
   raf = requestAnimationFrame(frame);
 }
