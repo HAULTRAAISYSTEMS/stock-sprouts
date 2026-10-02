@@ -408,8 +408,18 @@ def api_sell():
     db = get_db()
     row = db.execute("SELECT qty FROM holdings WHERE profile_id = ? AND ticker = ?",
                      (p["id"], ticker)).fetchone()
-    if not row or row["qty"] < qty - 1e-9:
+    if not row:
         return jsonify({"ok": False, "error": "You do not own that many shares."}), 400
+    holding = row["qty"]
+    if holding < qty - 1e-9:
+        # Tolerate a dust-sized overshoot: quantities are shown rounded to 4
+        # decimals, so "sell everything I own" can arrive up to half a
+        # 4th-decimal above the stored amount. Clamp to the full holding
+        # instead of erroring.
+        if qty - holding <= 1e-4:
+            qty = holding
+        else:
+            return jsonify({"ok": False, "error": "You do not own that many shares."}), 400
     proceeds = qty * prices[ticker]["price"]
     new_qty = row["qty"] - qty
     if new_qty < 1e-9:
