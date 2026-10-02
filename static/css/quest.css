@@ -393,3 +393,16 @@ a { color: var(--gold-l); }
 .notice strong { color: var(--gold-l); }
 table.q-table { width: 100%; border-collapse: collapse; }
 table.q-table td { padding: 8px 4px; border-bottom: 1px dashed #2b4486; }
+
+/* Coin Catch runner control pad */
+.run-pad { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 14px 0 4px; }
+.run-btn {
+  width: 62px; height: 62px; border-radius: 50%;
+  border: 3px solid #a86e00; background: #16324f; color: #ffc93c;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 4px 0 #0a1428;
+  touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+.run-btn:active { transform: translateY(3px); box-shadow: none; }
+.run-btn .ic.lg { width: 30px; height: 30px; }
+#catchCanvas { touch-action: none; }
