@@ -428,3 +428,20 @@ table.q-table td { padding: 8px 4px; border-bottom: 1px dashed #2b4486; }
   background: #10254d; border: 2px solid var(--gold-d);
   border-radius: 14px; padding: 10px 14px; margin: 10px 0;
 }
+
+/* Bull Run: Chase Mode — liabilities proximity bar + crash banner */
+.liab-wrap { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 8px 0 2px; }
+.liab-label { font-size: 11px; letter-spacing: 2px; color: #f87171; font-weight: 800; white-space: nowrap; }
+.liab-bar { width: min(300px, 62vw); height: 14px; border-radius: 8px; background: #1c0a12; border: 2px solid #7f1d2d; overflow: hidden; }
+#liabFill { height: 100%; width: 70%; border-radius: 5px;
+  background: linear-gradient(90deg, #4ade80, #facc15); transition: width 0.3s; }
+#liabFill.danger { background: linear-gradient(90deg, #f59e0b, #ef4444); animation: liabPulse 0.6s infinite alternate; }
+@keyframes liabPulse { from { filter: brightness(1); } to { filter: brightness(1.6); } }
+.crash-banner {
+  margin: 10px auto 0; padding: 10px 26px; display: inline-block;
+  font-family: 'Baloo 2', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: 3px;
+  color: #ffd76a; background: linear-gradient(180deg, #7f1d2d, #450a0a);
+  border: 3px solid #fbbf24; border-radius: 14px;
+  animation: crashFlash 0.5s infinite alternate;
+}
+@keyframes crashFlash { from { transform: scale(1); } to { transform: scale(1.06); } }
