@@ -454,7 +454,13 @@ def quest_catch():
     p, redir = _v2_profile_or_redirect()
     if redir:
         return redir
-    return render_v2("quest_catch.html", p)
+    try:
+        avatar = json.loads(p["avatar"] or "{}")
+    except (TypeError, ValueError):
+        avatar = {}
+    portrait = (avatar.get("portrait") or "age-9-12").strip() or "age-9-12"
+    avatar_url = "/static/img/v2/" + portrait + ".webp"
+    return render_v2("quest_catch.html", p, avatar_url=avatar_url)
 
 
 @app.get("/quest/q1/quiz")
