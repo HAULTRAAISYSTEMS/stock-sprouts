@@ -1,10 +1,11 @@
 /* Stock Quest v2 — mini-games. No emojis; canvas-drawn art only. */
 
-/* ---------------- Coin Catch (Quest 1) ----------------
-   Subway-Surfers-style 3-lane runner. The kid auto-runs through Fortune City:
-   swipe / arrow keys / pad buttons to switch lanes, jump the barriers and
-   money pits, slide under toll gates, and grab coins. 45 seconds.
-   Calls onDone({score, caught}) when time runs out. */
+/* ---------------- Bull Run (Quest 1) ----------------
+   Subway-Surfers-style 3-lane runner and the game's main earner. The kid
+   auto-runs through Fortune City: swipe / arrow keys / pad buttons to switch
+   lanes, jump the barriers and money pits, slide under toll gates, grab coins,
+   and snag brand tokens (3 of one brand = a real $5 stock slice!).
+   Calls onDone({score, caught, tokens}) when time runs out. */
 function initCoinCatch(canvasId, onDone) {
   const cv = document.getElementById(canvasId);
   const ctx = cv.getContext("2d");
@@ -31,10 +32,24 @@ function initCoinCatch(canvasId, onDone) {
   const yFor = (z) => horizonY + (groundY - horizonY) * Math.pow(Math.max(0, z), 0.92);
   const sFor = (z) => 0.22 + 0.78 * Math.max(0, z);
 
+  // ---- brand tokens: preloaded square icon art on navy, circle-clipped ----
+  const TOKEN_KEYS = ["MCD", "NVDA", "RBLX", "NKE", "AAPL", "DIS", "FORTNITE"];
+  const TOKEN_W = { MCD: 5, NVDA: 5, RBLX: 5, NKE: 5, AAPL: 5, DIS: 5, FORTNITE: 1.2 };
+  const tokenImg = {};
+  TOKEN_KEYS.forEach((k) => {
+    const img = new Image();
+    img.src = "/static/img/v2/tokens/token-" + k.toLowerCase() + ".webp";
+    tokenImg[k] = img;
+  });
+  const bgImg = new Image();
+  let bgReady = false;
+  bgImg.onload = () => { bgReady = true; };
+  bgImg.src = "/static/img/v2/bg-bullrun.webp";
+
   // ---- player state ----
   let lane = 0, lanePos = 0;          // lanePos eases toward lane
-  let jumpT = -1, slideT = -1;
-  const JUMP_DUR = 0.62, SLIDE_DUR = 0.7;
+  let jumpT = -1, slideT = -1, squashT = -1;
+  const JUMP_DUR = 0.62, SLIDE_DUR = 0.7, SQUASH_DUR = 0.18;
   const jumpH = () => {
     if (jumpT < 0) return 0;
     const t = jumpT / JUMP_DUR;
@@ -45,12 +60,15 @@ function initCoinCatch(canvasId, onDone) {
 
   // ---- run state ----
   let score = 0, caught = 0, running = true;
+  const tokens = {};                  // key -> count this run
+  let hotBrand = null;                // streaks make 3-of-a-kind achievable
   const DUR = 45000;
   const t0 = performance.now();
   const tEnd = t0 + DUR;
-  let invulnUntil = 0, shake = 0, dist = 0, rowTimer = 0.4;
-  const ents = [];   // {lane, z, type: coin|pit|barrier|gate, y, done}
+  let invulnUntil = 0, shake = 0, dist = 0, rowTimer = 0.4, tokenTimer = 6;
+  const ents = [];   // {lane, z, type: coin|pit|barrier|gate|token, y, key, done}
   const pops = [];
+  const parts = [];  // dust + sparkles: {x,y,vx,vy,life,max,color,size,grav}
   const stars = [];
   for (let i = 0; i < 60; i++) {
     stars.push({ x: Math.random(), y: Math.random() * 0.26, r: Math.random() * 1.6 + 0.4, tw: Math.random() * 6.28 });
@@ -58,7 +76,41 @@ function initCoinCatch(canvasId, onDone) {
 
   const hudT = document.getElementById("catchTime");
   const hudS = document.getElementById("catchScore");
+  const hudTok = document.getElementById("tokenHud");
   const setScore = () => { if (hudS) hudS.textContent = score; };
+  function setTokenHud() {
+    if (!hudTok) return;
+    const keys = Object.keys(tokens);
+    if (!keys.length) {
+      hudTok.innerHTML = '<span class="tok-hint">Snag 3 matching brand tokens to earn a stock slice!</span>';
+      return;
+    }
+    hudTok.innerHTML = keys.map((k) =>
+      '<span class="tok-pill"><img src="/static/img/v2/tokens/token-' + k.toLowerCase() +
+      '.webp" alt="' + k + '">&times;' + tokens[k] + "</span>"
+    ).join("");
+  }
+
+  // ---- particles: dust puffs + sparkle bursts ----
+  function addPart(x, y, vx, vy, life, color, size, grav) {
+    parts.push({ x, y, vx, vy, life, max: life, color, size: size || 3, grav: grav || 0 });
+  }
+  function dustBurst(x, y) {
+    for (let i = 0; i < 9; i++) {
+      addPart(x + (Math.random() - 0.5) * 36, y - 2,
+        (Math.random() - 0.5) * 170, -Math.random() * 90 - 20,
+        0.4 + Math.random() * 0.3, "rgba(190,205,235,0.85)",
+        3 + Math.random() * 4, 340);
+    }
+  }
+  function sparkleBurst(x, y, n, colors) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.283, sp = 60 + Math.random() * 170;
+      addPart(x, y, Math.cos(a) * sp, Math.sin(a) * sp - 50,
+        0.5 + Math.random() * 0.35, colors[i % colors.length],
+        2.5 + Math.random() * 3, 150);
+    }
+  }
 
   // ---- input: swipe, keys, pad buttons ----
   function goLeft() { if (running) lane = Math.max(-1, lane - 1); }
@@ -99,6 +151,19 @@ function initCoinCatch(canvasId, onDone) {
   const rndLane = () => [-1, 0, 1][Math.floor(Math.random() * 3)];
   const freeLanes = (used) => [-1, 0, 1].filter((l) => used.indexOf(l) < 0);
   const addCoin = (ln, z, y) => ents.push({ lane: ln, z, type: "coin", y: y || 0, done: false });
+  function pickTokenKey() {
+    if (hotBrand && Math.random() < 0.55) return hotBrand;   // streaks: 3-of-a-kind stays reachable
+    let total = 0;
+    TOKEN_KEYS.forEach((k) => { total += TOKEN_W[k]; });
+    let r = Math.random() * total, pick = TOKEN_KEYS[0];
+    for (const k of TOKEN_KEYS) { r -= TOKEN_W[k]; if (r <= 0) { pick = k; break; } }
+    hotBrand = pick;
+    return pick;
+  }
+  function spawnToken() {
+    ents.push({ lane: rndLane(), z: 0.02, type: "token", key: pickTokenKey(),
+                done: false, wob: Math.random() * 6.28 });
+  }
   function spawnRow() {
     const roll = Math.random();
     if (roll < 0.30) {
@@ -144,20 +209,33 @@ function initCoinCatch(canvasId, onDone) {
   function collide(e, now) {
     if (Math.abs(lanePos - e.lane) >= 0.45) return;
     const h = jumpH();
+    const ex = xFor(e.lane, e.z), ey = yFor(e.z), es = sFor(e.z);
     if (e.type === "coin") {
       if (Math.abs(h - (e.y || 0)) < 0.5) {
         e.done = true;
         score += 10; caught++;
-        pop(xFor(e.lane, e.z), yFor(e.z) - 34, "+10", "#4ade80");
+        sparkleBurst(ex, ey - 30 * es, 6, ["#ffd76a", "#fff3c4", "#f59e0b"]);
+        pop(ex, ey - 34, "+10", "#4ade80");
+        setScore();
+      }
+      return;
+    }
+    if (e.type === "token") {
+      if (h < 0.55) {
+        e.done = true;
+        tokens[e.key] = (tokens[e.key] || 0) + 1;
+        score += 25;
+        sparkleBurst(ex, ey - 40 * es, 10, ["#ffd76a", "#fff3c4", "#f59e0b", "#ffffff"]);
+        pop(ex, ey - 58, e.key === "FORTNITE" ? "BONUS!" : "+25 " + e.key, "#ffd76a");
+        setTokenHud();
         setScore();
       }
       return;
     }
     if (now < invulnUntil) return;
-    const x = xFor(e.lane, e.z), y = yFor(e.z);
-    if (e.type === "pit" && h < 0.3) { e.done = true; stumble(x, y); }
-    else if (e.type === "barrier" && h < 0.6) { e.done = true; stumble(x, y); }
-    else if (e.type === "gate" && !sliding()) { e.done = true; stumble(x, y); }
+    if (e.type === "pit" && h < 0.3) { e.done = true; stumble(ex, ey); }
+    else if (e.type === "barrier" && h < 0.6) { e.done = true; stumble(ex, ey); }
+    else if (e.type === "gate" && !sliding()) { e.done = true; stumble(ex, ey); }
   }
 
   // ---- drawing ----
@@ -182,6 +260,39 @@ function initCoinCatch(canvasId, onDone) {
     ctx.font = "800 " + Math.max(10, Math.round(22 * s)) + "px 'Baloo 2', sans-serif";
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("$", 0, 1);
+    ctx.restore();
+  }
+  function drawToken(e, t) {
+    const x = xFor(e.lane, e.z), y = yFor(e.z), s = sFor(e.z);
+    const r = 30 * s;
+    const yy = y - r - Math.sin(t * 0.004 + e.wob) * 6 * s;
+    // sparkle trail
+    if (Math.random() < 0.55) {
+      addPart(x + (Math.random() - 0.5) * 34 * s, yy + (Math.random() - 0.5) * 34 * s,
+        -30, -55, 0.45, "#ffe08a", 2 + Math.random() * 2.5, 0);
+    }
+    ctx.save(); ctx.translate(x, yy);
+    // golden glow
+    const g = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.8);
+    g.addColorStop(0, "rgba(255,215,106,0.55)"); g.addColorStop(1, "rgba(255,215,106,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, r * 1.8, 0, 7); ctx.fill();
+    // circle-clipped brand art
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.clip();
+    const img = tokenImg[e.key];
+    if (img && img.complete && img.naturalWidth) {
+      ctx.drawImage(img, -r, -r, r * 2, r * 2);
+    } else {
+      drawCoin(0, 0, s);
+    }
+    ctx.restore();
+    // spinning gold ring
+    ctx.strokeStyle = "#ffd76a"; ctx.lineWidth = Math.max(2, 5 * s);
+    ctx.setLineDash([10 * s, 8 * s]);
+    ctx.lineDashOffset = -t * 0.02;
+    ctx.beginPath(); ctx.arc(0, 0, r + 6 * s, 0, 7); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
     ctx.restore();
   }
   function drawPit(x, y, s) {
@@ -233,9 +344,14 @@ function initCoinCatch(canvasId, onDone) {
     const lift = jumpH() * 130;
     const isSlide = sliding();
     const blink = performance.now() < invulnUntil && Math.floor(t / 90) % 2 === 0;
+    const sq = squashT >= 0 ? Math.max(0, 1 - squashT / SQUASH_DUR) : 0;
+    const leanX = Math.max(-0.35, Math.min(0.35, (lane - lanePos) * 0.5));
     ctx.save();
     ctx.translate(x, gy - lift);
     ctx.scale(s, s);
+    ctx.transform(1, 0, leanX, 1, 0, 0);   // lean into lane changes
+    ctx.rotate(0.05);                        // forward sprint lean
+    if (sq > 0) ctx.scale(1 + sq * 0.4, 1 - sq * 0.32);  // squash on landing
     if (isSlide) { ctx.translate(0, 26); ctx.scale(1.25, 0.62); }
     if (blink) ctx.globalAlpha = 0.35;
     const sw = isSlide || jumpH() > 0 ? 0 : Math.sin(t * 0.018) * 14;
@@ -278,6 +394,19 @@ function initCoinCatch(canvasId, onDone) {
       ctx.fillStyle = color;
     }
   }
+  function drawPanLayer(par, yBase, hgt, tint) {
+    // scrolling slice of the night-city panorama; tiles horizontally
+    const iw = bgImg.naturalWidth, ih = bgImg.naturalHeight;
+    if (!iw || !ih) return;
+    const scale = hgt / ih;
+    const dw = iw * scale;
+    let off = (dist * par * 160) % dw;
+    if (off < 0) off += dw;
+    for (let x = -dw; x < W + dw; x += dw) {
+      ctx.drawImage(bgImg, x - off, yBase - hgt, dw, hgt);
+    }
+    if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, yBase - hgt, W, hgt); }
+  }
   function drawBG(t) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#070d24"); g.addColorStop(0.3, "#0d1b3e"); g.addColorStop(1, "#16294d");
@@ -290,8 +419,14 @@ function initCoinCatch(canvasId, onDone) {
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#ffe08a";
     ctx.beginPath(); ctx.arc(W - 52, 54, 24, 0, 7); ctx.fill();
-    drawBuildings(0.25, "#0a1430", 90);
-    drawBuildings(0.5, "#0e1c40", 60);
+    if (bgReady) {
+      // two scrolling panorama layers: far (slow, darkened) + near (faster)
+      drawPanLayer(0.15, horizonY, horizonY, "rgba(7,13,36,0.45)");
+      drawPanLayer(0.35, horizonY + 30, horizonY * 1.12, null);
+    } else {
+      drawBuildings(0.25, "#0a1430", 90);
+      drawBuildings(0.5, "#0e1c40", 60);
+    }
     // track
     const hy = horizonY, cx = W / 2, sp = spread();
     ctx.fillStyle = "#101f42";
@@ -325,19 +460,40 @@ function initCoinCatch(canvasId, onDone) {
     const speed = 0.55 + 0.75 * progress;      // z-units per second; ramps up
     dist += speed * dt;
 
-    if (jumpT >= 0) { jumpT += dt; if (jumpT >= JUMP_DUR) jumpT = -1; }
+    if (jumpT >= 0) {
+      jumpT += dt;
+      if (jumpT >= JUMP_DUR) {                 // landing: dust + squash
+        jumpT = -1;
+        squashT = 0;
+        dustBurst(xFor(lanePos, 1), yFor(1));
+      }
+    }
+    if (squashT >= 0) { squashT += dt; if (squashT >= SQUASH_DUR) squashT = -1; }
     if (slideT >= 0) { slideT += dt; if (slideT >= SLIDE_DUR) slideT = -1; }
     lanePos += (lane - lanePos) * Math.min(1, dt * 14);
     if (shake > 0) shake = Math.max(0, shake - dt * 30);
 
     rowTimer -= dt;
     if (rowTimer <= 0) { spawnRow(); rowTimer = 1.25 - 0.55 * progress; }
+    tokenTimer -= dt;
+    if (tokenTimer <= 0) {
+      tokenTimer = 14 + Math.random() * 6;     // ~every 14-20s
+      if (!ents.some((e) => e.type === "token" && !e.done)) spawnToken();
+    }
 
     for (let i = ents.length - 1; i >= 0; i--) {
       const e = ents[i];
       e.z += speed * dt;
       if (e.z > 1.2) { ents.splice(i, 1); continue; }
       if (!e.done && e.z >= 0.78 && e.z <= 1.05) collide(e, now);
+    }
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const pt = parts[i];
+      pt.life -= dt;
+      if (pt.life <= 0) { parts.splice(i, 1); continue; }
+      pt.vy += pt.grav * dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
     }
 
     ctx.save();
@@ -349,11 +505,18 @@ function initCoinCatch(canvasId, onDone) {
         const liftY = (e.y || 0) * 70 * s + Math.abs(Math.sin(now * 0.005 + e.z * 20)) * 4;
         drawCoin(x, y - liftY, s);
       }
+      else if (e.type === "token") drawToken(e, now);
       else if (e.type === "pit") drawPit(x, y, s);
       else if (e.type === "barrier") drawBarrier(x, y, s);
       else if (e.type === "gate") drawGate(x, y, s);
     });
     drawPlayer(now);
+    parts.forEach((pt) => {
+      ctx.globalAlpha = Math.max(0, pt.life / pt.max);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, 7); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
     for (let i = pops.length - 1; i >= 0; i--) {
       const p = pops[i];
       p.y -= 40 * dt; p.life -= dt * 1.4;
@@ -374,9 +537,10 @@ function initCoinCatch(canvasId, onDone) {
     running = false;
     cancelAnimationFrame(raf);
     window.removeEventListener("keydown", keyH);
-    onDone({ score, caught });
+    onDone({ score, caught, tokens });
   }
   setScore();
+  setTokenHud();
   raf = requestAnimationFrame(frame);
 }
 
@@ -399,7 +563,7 @@ function initSortGame(boxId, items, onDone) {
     house: '<svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11L12 3.5 20.5 11"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg>',
     shoe: '<svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5h18v2.5H3z"/><path d="M3 16.5c.5-4.5 2.5-6.5 6-8.5l5.5-3 1 3.5 5.5 2v6"/></svg>',
     gamepad: '<svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7.5" width="19" height="10" rx="5"/><path d="M8 10.5v4M6 12.5h4"/><circle cx="15.5" cy="11.5" r="1"/><circle cx="18" cy="14" r="1"/></svg>',
-    teddy: '<svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7" r="2.5"/><circle cx="16.5" cy="7" r="2.5"/><circle cx="12" cy="11" r="5"/><circle cx="12" cy="19" r="4"/></svg>'
+    teddy: '<svg class="ic lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7" r="2.5"/><circle cx="16.5" cy="7" r="2.5"/><circle cx="12" cy="11" r="5"/><circle cx="12" cy="19" r="4"/><circle cx="10.2" cy="10.5" r=".9" fill="currentColor" stroke="none"/><circle cx="13.8" cy="10.5" r=".9" fill="currentColor" stroke="none"/></svg>'
   };
 
   function render() {

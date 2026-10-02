@@ -1,16 +1,19 @@
 {% extends "base_v2.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Coin Catch{% endblock %}
+{% block title %}Bull Run{% endblock %}
 {% block content %}
 <div class="game-shell">
-  <h2 class="q-sec-title">Coin <span class="gold">Catch</span></h2>
-  <p class="game-tip">Run! <strong>Swipe</strong> (or arrows) to dodge — <strong>← →</strong> switch lanes, <strong>↑</strong> jump the pits &amp; barriers, <strong>↓</strong> slide under the toll gates. Grab every coin! <span class="pretend-tag">pretend money</span></p>
+  <img class="game-splash" src="{{ url_for('static', filename='img/v2/bullrun-splash.webp') }}" alt="Bull Run — sprint through Fortune City">
+  <h2 class="q-sec-title">Bull <span class="gold">Run</span></h2>
+  <p class="game-tip"><strong>Run the Bull Run. Grab coins. Snag brand tokens. Own the stocks.</strong></p>
+  <p class="game-tip">Swipe (or arrows) to dodge — <strong>← →</strong> switch lanes, <strong>↑</strong> jump the pits &amp; barriers, <strong>↓</strong> slide under the toll gates. Grab <strong>brand tokens</strong> — 3 of one brand earns a real $5 stock slice! <span class="pretend-tag">pretend money</span></p>
 
   <div class="game-hud">
     <span class="stat-pill"><span id="catchTime">45s</span></span>
     <span class="stat-pill gold">{{ icon('star', 'ic') }} Score: <span id="catchScore">0</span></span>
     <span class="stat-pill">Lv 1</span>
   </div>
+  <div class="token-row" id="tokenHud"></div>
 
   <div id="gameArea">
     <canvas id="catchCanvas"></canvas>
@@ -25,14 +28,18 @@
 
   <div id="catchResult" style="display:none">
     <div class="q-card gold-edge">
-      <h3>Time's up!</h3>
+      <h3>Bull Run complete!</h3>
+      <p class="center" id="doubleBanner" style="display:none"><span class="badge-state open">DAILY DOUBLE — 2x coins &amp; cash!</span></p>
       <div class="big-rewards">
         <div class="big-reward"><b id="finalScore">0</b>points</div>
         <div class="big-reward"><b id="finalCoins">0</b>Stock Coins earned</div>
+        <div class="big-reward"><b id="finalCash">$0</b>cash for stocks</div>
       </div>
+      <div id="sliceList"></div>
+      <p class="game-tip" id="catchBonus"></p>
       <p class="game-tip" id="catchBadge"></p>
       <div class="btn-row center" style="justify-content:center">
-        <button class="btn-ghost" id="catchRetry">Play again</button>
+        <button class="btn-ghost" id="catchRetry">Run again</button>
         <a class="btn-gold" href="{{ url_for('quest_quiz') }}">Next: the quiz</a>
       </div>
     </div>
@@ -41,22 +48,72 @@
 {% endblock %}
 {% block scripts %}
 <script>
+function confettiBurst() {
+  const c = document.createElement("canvas");
+  c.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200";
+  document.body.appendChild(c);
+  const x = c.getContext("2d");
+  const W2 = c.width = window.innerWidth, H2 = c.height = window.innerHeight;
+  const cols = ["#ffd76a", "#f59e0b", "#4ade80", "#38bdf8", "#f472b6", "#fff3c4"];
+  const ps = [];
+  for (let i = 0; i < 140; i++) {
+    ps.push({ x: Math.random() * W2, y: -20 - Math.random() * H2 * 0.5,
+      vx: (Math.random() - 0.5) * 120, vy: 120 + Math.random() * 220,
+      r: 4 + Math.random() * 5, col: cols[i % cols.length],
+      rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 8 });
+  }
+  const t0 = performance.now();
+  (function tick(now) {
+    const dt = 1 / 60;
+    x.clearRect(0, 0, W2, H2);
+    ps.forEach((p) => {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      x.save(); x.translate(p.x, p.y); x.rotate(p.rot);
+      x.fillStyle = p.col; x.fillRect(-p.r / 2, -p.r / 3, p.r, p.r * 0.66);
+      x.restore();
+    });
+    if (now - t0 < 3200) requestAnimationFrame(tick); else c.remove();
+  })(t0);
+}
 function runCatch() {
   document.getElementById("gameArea").style.display = "block";
   document.getElementById("catchResult").style.display = "none";
+  document.getElementById("doubleBanner").style.display = "none";
   document.getElementById("catchHint").textContent = "Go! Swipe, arrows, or the buttons — run!";
-  initCoinCatch("catchCanvas", async ({ score, caught }) => {
+  initCoinCatch("catchCanvas", async ({ score, caught, tokens }) => {
     document.getElementById("gameArea").style.display = "none";
     try {
-      const res = await api("/api/game/catch", { score, caught });
+      const res = await api("/api/game/catch", { score, caught, tokens: tokens || {} });
       document.getElementById("finalScore").textContent = score;
       document.getElementById("finalCoins").textContent = res.coins_earned;
-      document.getElementById("catchBadge").textContent = res.badge
-        ? "Coin Catcher badge earned — 20+ coins caught!"
-        : "Caught " + caught + " coins. Catch 20 for the Coin Catcher badge!";
+      document.getElementById("finalCash").textContent = "$" + res.cash_awarded;
+      if (res.doubled) document.getElementById("doubleBanner").style.display = "block";
+      const sl = document.getElementById("sliceList");
+      const slices = res.slices_earned || [];
+      if (slices.length) {
+        sl.innerHTML = slices.map((s) =>
+          '<div class="slice-earned"><b>You earned a slice of ' + s.brand + '!</b><br>' +
+          '<span class="section-sub">' + s.qty + ' shares at the market price — pretend money</span></div>'
+        ).join("");
+        confettiBurst();
+      } else {
+        const tk = res.tokens || {};
+        const names = Object.keys(tk);
+        sl.innerHTML = names.length
+          ? '<p class="game-tip">Tokens this run: ' + names.map((k) => k + " ×" + tk[k]).join(", ") +
+            " — snag 3 of one brand for a stock slice!</p>"
+          : '<p class="game-tip">No brand tokens this run — watch for the golden rings!</p>';
+      }
+      document.getElementById("catchBonus").textContent = res.bonus_note || "";
+      let badgeTxt = res.badge
+        ? "Coin Catcher badge earned — 20+ coins caught! "
+        : "Caught " + caught + " coins. Catch 20 for the Coin Catcher badge. ";
+      if (res.badge2) badgeTxt += "Brand Collector badge earned — your first stock slice!";
+      document.getElementById("catchBadge").textContent = badgeTxt;
     } catch (e) {
       document.getElementById("finalScore").textContent = score;
       document.getElementById("finalCoins").textContent = 0;
+      document.getElementById("finalCash").textContent = "$0";
       document.getElementById("catchBadge").textContent = e.message;
     }
     document.getElementById("catchResult").style.display = "block";
